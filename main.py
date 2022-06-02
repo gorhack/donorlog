@@ -1,3 +1,4 @@
+import urllib.parse
 from pathlib import Path
 
 from fastapi import FastAPI, Request, Form, HTTPException
@@ -57,8 +58,9 @@ async def redirect_search(
         raise HTTPException(
             status_code=400, detail="Github username must not be empty."
         )
+    params = {"github_monthly_sponsorship_amount": github_monthly_sponsorship_amount}
     return RedirectResponse(
-        f"/search/{github_username}?github_monthly_sponsorship_amount={github_monthly_sponsorship_amount}",
+        f"/search/{github_username}?{urllib.parse.urlencode(params)}",
         status_code=303,
     )
 
@@ -80,11 +82,15 @@ def github_authenticate(code: str):
             )
         )
         # TODO store access_token and user in db instead of passing as query params
+        params = {
+            "github_username": username,
+            "github_monthly_sponsorship_amount": monthly_sponsorship_amount,
+        }
         return RedirectResponse(
             url=app.url_path_for(
                 name="root",
             )
-            + f"?github_username={username}&github_monthly_sponsorship_amount={monthly_sponsorship_amount}"
+            + f"?{urllib.parse.urlencode(params)}"
         )
     except HTTPException:
         raise HTTPException(
