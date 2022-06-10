@@ -1,47 +1,49 @@
-# reference: https://github.com/rohanshiva/Github-Login-FastAPI
-import os
 from urllib.parse import urlencode
 
 import requests
-from fastapi import HTTPException
+from fastapi import HTTPException, status
 from requests import RequestException
 
-CLIENT_ID = os.getenv("GITHUB_CLIENT_ID")
-CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET")
-REDIRECT_URI = os.getenv("GITHUB_REDIRECT_URI")
-LOGIN_URL = os.getenv("GITHUB_LOGIN_URL")
-ACCESS_TOKEN_URL = os.getenv("GITHUB_ACCESS_TOKEN_URL")
-API_URL = os.getenv("GITHUB_API_URL")
+from core.config import settings
+
+
+# Extended from: https://github.com/rohanshiva/Github-Login-FastAPI
 
 
 class GithubOAuth:
     @staticmethod
-    def login():
-        # TODO `state` field to protect against cross-site scripting
+    def login(state: str):
         params = {
-            "client_id": CLIENT_ID,
-            "redirect_uri": REDIRECT_URI,
-            "scope": "read:user",
+            "client_id": settings.GITHUB_CLIENT_ID,
+            "redirect_uri": settings.GITHUB_REDIRECT_URL,
+            "state": state,
         }
         params = urlencode(params)
-        return LOGIN_URL + params
+        return settings.GITHUB_LOGIN_URL + params
 
     @staticmethod
-    def get_access_token(code):
+    def get_access_token(code: str, redirect_uri: str):
         try:
             params = {
-                "client_id": CLIENT_ID,
-                "redirect_uri": REDIRECT_URI,
-                "client_secret": CLIENT_SECRET,
+                "client_id": settings.GITHUB_CLIENT_ID,
+                "client_secret": settings.GITHUB_CLIENT_SECRET,
                 "code": code,
+                "redirect_uri": redirect_uri,
             }
             headers = {"Accept": "application/json"}
-            r = requests.post(ACCESS_TOKEN_URL, headers=headers, params=params)
-            access_token = r.json()["access_token"]
-            return access_token
+            r = requests.post(
+                settings.GITHUB_ACCESS_TOKEN_URL, headers=headers, data=params
+            )
+            if r.status_code == 200 and not r.json().get("error"):
+                return r.json().get("access_token")
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Unhandled exception authenticating with Github: {r.content.decode('utf-8')}",
+                )
         except RequestException:
             raise HTTPException(
-                status_code=401,
+                status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Error while trying to retrieve user access token",
             )
 
@@ -52,16 +54,21 @@ class GithubOAuth:
                 "https://api.github.com/user",
                 headers={"Authorization": "token " + access_token},
             )
-            key = str(r.json()["id"])
-            email = r.json()["email"]
-            username = r.json()["login"]
-            avatar_url = r.json()["avatar_url"]
-            return {
-                "key": key,
-                "email": email,
-                "username": username,
-                "avatar_url": avatar_url,
-            }
+            if r.status_code == 200 and not r.json().get("error"):
+                key = str(r.json().get("id"))
+                email = r.json().get("email")
+                username = r.json().get("login")
+                name = r.json().get("name")
+                return {
+                    "key": key,
+                    "email": email,
+                    "username": username,
+                    "name": name,
+                }
+            else:
+                raise HTTPException(
+                    status_code=r.status_code, detail=r.content.decode("utf-8")
+                )
         except RequestException:
             raise HTTPException(status_code=401, detail="Failed to fetch user details")
 
@@ -81,7 +88,7 @@ class GithubOAuth:
         # fmt: on
         try:
             r = requests.post(
-                API_URL,
+                settings.GITHUB_GRAPHQL_API_URL,
                 headers={"Authorization": "bearer " + access_token},
                 json={"query": query},
             )
@@ -93,3 +100,22 @@ class GithubOAuth:
                 raise HTTPException(status_code=r.status_code, detail=r.content)
         except RequestException:
             raise HTTPException(status_code=401, detail="Failed to fetch user details")
+
+    @staticmethod
+    def verify_user_auth_token(github_auth_token):
+        try:
+            token_url = f"{settings.GITHUB_REST_API_URL}/applications/{settings.GITHUB_CLIENT_ID}/token"
+            r = requests.post(
+                token_url,
+                auth=(settings.GITHUB_CLIENT_ID, settings.GITHUB_CLIENT_SECRET),
+                headers={
+                    "accept": "Application/vnd.github.v3+json",
+                },
+                json={"access_token": github_auth_token},
+            )
+            if r.status_code == 200:
+                return True
+            else:
+                return False
+        except RequestException:
+            return False
