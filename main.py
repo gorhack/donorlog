@@ -9,10 +9,9 @@ from Crypto.Cipher import AES
 from Crypto.Random import get_random_bytes
 from fastapi import FastAPI, Request, HTTPException, status, Depends, Response
 from fastapi.encoders import jsonable_encoder
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
-from starlette.responses import JSONResponse
 
 from apis.github import GithubOAuth
 from apis.utils import OAuth2AuthorizationWithCookie
@@ -49,6 +48,15 @@ class User(BaseModel):
     github_auth_token: Union[str, None] = None
 
 
+class DisplayUser(BaseModel):
+    github_username: str
+    github_monthly_sponsorship_amount: int
+
+
+class HTTPError(BaseModel):
+    detail: str
+
+
 fake_user_db: Dict[str, User] = {
     "gorhack": User(
         user_id="981a14c0-0fa1-4b89-bc63-cec1e8c70c2d",
@@ -64,11 +72,11 @@ def get_user_by_username(db: dict, username: str) -> Optional[User]:
     return db.get(username)
 
 
-def verify_user(user: User):
+async def verify_user(user: User):
     if (
         user
         and user.github_auth_token
-        and github_oauth_handler.verify_user_auth_token(user.github_auth_token)
+        and await github_oauth_handler.verify_user_auth_token(user.github_auth_token)
     ):
         return True
     else:
@@ -97,26 +105,53 @@ async def root(request: Request):
     )
 
 
-@app.get("/users/me", response_model=User)
+@app.get(
+    "/users/me",
+    responses={
+        status.HTTP_200_OK: {"model": User},
+        status.HTTP_401_UNAUTHORIZED: {"model": HTTPError},
+    },
+)
 async def read_current_user(current_user: User = Depends(get_current_user)):
     return current_user
 
 
-@app.get("/token", response_model=UserTokenId)
+@app.get(
+    "/token",
+    responses={
+        status.HTTP_200_OK: {"model": UserTokenId},
+        status.HTTP_401_UNAUTHORIZED: {"model": HTTPError},
+    },
+)
 async def read_user_token(token=Depends(oauth2_scheme)):
     return token
 
 
-@app.get("/search/{github_username}")
+@app.get(
+    "/search/{github_username}",
+    responses={
+        status.HTTP_200_OK: {"model": DisplayUser},
+        status.HTTP_404_NOT_FOUND: {
+            "model": HTTPError,
+            "description": "User not verified.",
+        },
+    },
+)
 async def search_overview(github_username: str):
-    # TODO remove query params and retrieve data from db
-    github_monthly_sponsorship_amount = ""
-    if not github_monthly_sponsorship_amount:
-        # at least one thing must be searched
+    """
+    If the GitHub user has been authenticated, display the monthly sponsorship amount.
+    """
+    db_user = fake_user_db.get(github_username)
+    if not db_user or not await verify_user(db_user):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found.",
+            detail="User not verified.",
         )
+    github_monthly_sponsorship_amount = await (
+        github_oauth_handler.get_user_monthly_sponsorship_amount(
+            db_user.github_auth_token, github_username
+        )
+    )
     return {
         "github_username": f"{github_username}",
         "github_monthly_sponsorship_amount": int(github_monthly_sponsorship_amount),
@@ -141,8 +176,8 @@ def set_bearer_cookie(response: Response, token: str):
     return response
 
 
-def cookie_from_access_token(access_token: str):
-    user = github_oauth_handler.get_user_details(access_token)
+async def cookie_from_access_token(access_token: str):
+    user = await github_oauth_handler.get_user_details(access_token)
     username = user.get("username")
     # TODO get_user_by_github_id
     db_user = get_user_by_username(fake_user_db, username)
@@ -151,7 +186,6 @@ def cookie_from_access_token(access_token: str):
         db_user.github_auth_token = access_token
     else:
         # TODO create db user and let the db create the UUID
-        user_id = uuid.uuid4()
         raise NotImplementedError("Unable to create a new user")
     # Note: The JWT stored does not actually contain the access_token from
     # GitHub and requires the database to retrieve the user's stored access_code.
@@ -182,7 +216,6 @@ async def handle_401(request: Request, exc: HTTPException):
 @app.get(
     "/login/github",
     response_class=RedirectResponse,
-    status_code=303,
     tags=["Authentication"],
 )
 async def github_login():
@@ -197,7 +230,7 @@ async def github_login():
     state = urlsafe_b64encode(get_random_bytes(16)).rstrip(b"=").decode("utf-8")
     resp = RedirectResponse(
         github_oauth_handler.login(state),
-        status_code=status.HTTP_303_SEE_OTHER,
+        status_code=status.HTTP_307_TEMPORARY_REDIRECT,
     )
     nonce = get_random_bytes(16)
     cipher = AES.new(key, AES.MODE_EAX, nonce)
@@ -220,24 +253,29 @@ async def github_login():
     "/logout",
     tags=["Authentication"],
     response_class=RedirectResponse,
-    status_code=status.HTTP_200_OK,
 )
 async def logout(current_user: Optional[User] = Depends(get_current_user)):
     """
-    Remove the JWT from cookies and remove the GitHub access token from the database.
+    Remove the JWT from cookies and remove the GitHub access token from the database
+    and redirects user to `/`.
+
+    **NOTE:** If the user is not already logged in, will redirect to log in first.
     """
     if current_user:
         current_user.github_auth_token = None
-    resp = RedirectResponse(app.url_path_for("root"), status_code=status.HTTP_200_OK)
+    resp = RedirectResponse(app.url_path_for("root"))
     delete_cookies(resp, "all")
     return resp
 
 
 @app.get(
     "/oauth/token",
-    response_class=RedirectResponse,
     tags=["Authentication"],
-    response_model=Token,
+    responses={
+        status.HTTP_307_TEMPORARY_REDIRECT: {"model": Token},
+        status.HTTP_401_UNAUTHORIZED: {"model": HTTPError},
+    },
+    status_code=status.HTTP_307_TEMPORARY_REDIRECT,
 )
 async def access_token_from_authorization_code_flow(
     request: Request, code: str, state: str
@@ -264,21 +302,24 @@ async def access_token_from_authorization_code_flow(
     redirect_uri = request.headers.get("referer")
     if not redirect_uri:
         redirect_uri = str(request.base_url)
-    access_token = github_oauth_handler.get_access_token(code, redirect_uri)
+    access_token = await github_oauth_handler.get_access_token(code, redirect_uri)
     resp = RedirectResponse(redirect_uri)
     delete_cookies(resp, "gh_login_state")
-    cookie = cookie_from_access_token(access_token)
+    cookie = await cookie_from_access_token(access_token)
     resp = set_bearer_cookie(resp, cookie)
     return resp
 
 
 @app.post(
     "/oauth/token",
-    response_class=JSONResponse,
     tags=["Authentication"],
-    response_model=Token,
+    responses={
+        status.HTTP_200_OK: {"model": Token},
+        status.HTTP_400_BAD_REQUEST: {"model": HTTPError},
+        status.HTTP_401_UNAUTHORIZED: {"model": HTTPError},
+    },
 )
-async def access_token_from_authorization_code_flow(request: Request):
+async def swagger_access_token_from_authorization_code_flow(request: Request):
     """
     Swagger OAuth authorizationCode flow. Swagger handles CSRF verification.
 
@@ -299,10 +340,10 @@ async def access_token_from_authorization_code_flow(request: Request):
             code = p.split("=")[1]
         if p.startswith("redirect_uri="):
             redirect_uri = p.split("=")[1]
-    access_token = github_oauth_handler.get_access_token(
+    access_token = await github_oauth_handler.get_access_token(
         code, urllib.parse.unquote(redirect_uri)
     )
-    cookie = cookie_from_access_token(access_token)
+    cookie = await cookie_from_access_token(access_token)
     resp = JSONResponse(
         jsonable_encoder({"access_token": cookie, "token_type": "bearer"})
     )

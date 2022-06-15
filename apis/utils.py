@@ -41,6 +41,14 @@ class OAuth2AuthorizationWithCookie(OAuth2):
             auto_error=auto_error,
         )
 
+    @staticmethod
+    def create_unauthorized_error(detail: str):
+        return HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=detail,
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     async def __call__(
         self, request: Request
     ) -> Union[None, UserTokenId, RedirectResponse]:
@@ -51,11 +59,7 @@ class OAuth2AuthorizationWithCookie(OAuth2):
         scheme, param = get_authorization_scheme_param(authorization)
         if not authorization or scheme.lower() != "bearer":
             if self.auto_error:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Not authenticated",
-                    headers={"WWW-Authenticate": "Bearer"},
-                )
+                raise self.create_unauthorized_error("Not authenticated.")
             else:
                 return None
         try:
@@ -63,19 +67,13 @@ class OAuth2AuthorizationWithCookie(OAuth2):
             return token
         except ExpiredSignatureError:
             if self.auto_error:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Token Expired.",
-                    headers={"WWW-Authenticate": "Bearer"},
-                )
+                raise self.create_unauthorized_error("Token Expired.")
             else:
                 return None
         except (JWTError, JWTClaimsError):
             if self.auto_error:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Not authenticated: Invalid Token.",
-                    headers={"WWW-Authenticate": "Bearer"},
+                raise self.create_unauthorized_error(
+                    "Not authenticated: Invalid Token."
                 )
             else:
                 return None

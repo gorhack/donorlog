@@ -1,8 +1,7 @@
 from urllib.parse import urlencode
 
-import requests
+import httpx
 from fastapi import HTTPException, status
-from requests import RequestException
 
 from core.config import settings
 
@@ -22,7 +21,7 @@ class GithubOAuth:
         return settings.GITHUB_LOGIN_URL + params
 
     @staticmethod
-    def get_access_token(code: str, redirect_uri: str):
+    async def get_access_token(code: str, redirect_uri: str):
         try:
             params = {
                 "client_id": settings.GITHUB_CLIENT_ID,
@@ -31,49 +30,51 @@ class GithubOAuth:
                 "redirect_uri": redirect_uri,
             }
             headers = {"Accept": "application/json"}
-            r = requests.post(
-                settings.GITHUB_ACCESS_TOKEN_URL, headers=headers, data=params
-            )
-            if r.status_code == 200 and not r.json().get("error"):
-                return r.json().get("access_token")
-            else:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Unhandled exception authenticating with Github: {r.content.decode('utf-8')}",
+            async with httpx.AsyncClient() as client:
+                r = await client.post(
+                    settings.GITHUB_ACCESS_TOKEN_URL, headers=headers, data=params
                 )
-        except RequestException:
+                if r.status_code == 200 and not r.json().get("error"):
+                    return r.json().get("access_token")
+                else:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Unhandled exception authenticating with Github: {r.content.decode('utf-8')}",
+                    )
+        except httpx.HTTPError:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Error while trying to retrieve user access token",
             )
 
     @staticmethod
-    def get_user_details(access_token):
+    async def get_user_details(access_token):
         try:
-            r = requests.get(
-                "https://api.github.com/user",
-                headers={"Authorization": "token " + access_token},
-            )
-            if r.status_code == 200 and not r.json().get("error"):
-                key = str(r.json().get("id"))
-                email = r.json().get("email")
-                username = r.json().get("login")
-                name = r.json().get("name")
-                return {
-                    "key": key,
-                    "email": email,
-                    "username": username,
-                    "name": name,
-                }
-            else:
-                raise HTTPException(
-                    status_code=r.status_code, detail=r.content.decode("utf-8")
+            async with httpx.AsyncClient() as client:
+                r = await client.get(
+                    "https://api.github.com/user",
+                    headers={"Authorization": "token " + access_token},
                 )
-        except RequestException:
+                if r.status_code == 200 and not r.json().get("error"):
+                    key = str(r.json().get("id"))
+                    email = r.json().get("email")
+                    username = r.json().get("login")
+                    name = r.json().get("name")
+                    return {
+                        "key": key,
+                        "email": email,
+                        "username": username,
+                        "name": name,
+                    }
+                else:
+                    raise HTTPException(
+                        status_code=r.status_code, detail=r.content.decode("utf-8")
+                    )
+        except httpx.HTTPError:
             raise HTTPException(status_code=401, detail="Failed to fetch user details")
 
     @staticmethod
-    def get_user_monthly_sponsorship_amount(access_token, username):
+    async def get_user_monthly_sponsorship_amount(access_token, username):
         # TODO: calculate total amount donated, not just current month
         # fmt: off
         query = (
@@ -87,22 +88,23 @@ class GithubOAuth:
         )
         # fmt: on
         try:
-            r = requests.post(
-                settings.GITHUB_GRAPHQL_API_URL,
-                headers={"Authorization": "bearer " + access_token},
-                json={"query": query},
-            )
-            if r.status_code == 200:
-                return r.json()["data"]["user"]["sponsorshipsAsSponsor"][
-                    "totalRecurringMonthlyPriceInDollars"
-                ]
-            else:
-                raise HTTPException(status_code=r.status_code, detail=r.content)
-        except RequestException:
+            async with httpx.AsyncClient() as client:
+                r = await client.post(
+                    settings.GITHUB_GRAPHQL_API_URL,
+                    headers={"Authorization": "bearer " + access_token},
+                    json={"query": query},
+                )
+                if r.status_code == 200:
+                    return r.json()["data"]["user"]["sponsorshipsAsSponsor"][
+                        "totalRecurringMonthlyPriceInDollars"
+                    ]
+                else:
+                    raise HTTPException(status_code=r.status_code, detail=r.content)
+        except httpx.HTTPError:
             raise HTTPException(status_code=401, detail="Failed to fetch user details")
 
     @staticmethod
-    def verify_user_auth_token(github_auth_token):
+    async def verify_user_auth_token(github_auth_token):
         auth_error = HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated",
@@ -110,17 +112,18 @@ class GithubOAuth:
         )
         try:
             token_url = f"{settings.GITHUB_REST_API_URL}/applications/{settings.GITHUB_CLIENT_ID}/token"
-            r = requests.post(
-                token_url,
-                auth=(settings.GITHUB_CLIENT_ID, settings.GITHUB_CLIENT_SECRET),
-                headers={
-                    "accept": "Application/vnd.github.v3+json",
-                },
-                json={"access_token": github_auth_token},
-            )
-            if r.status_code == 200:
-                return True
-            else:
-                raise auth_error
-        except RequestException:
+            async with httpx.AsyncClient() as client:
+                r = await client.post(
+                    token_url,
+                    auth=(settings.GITHUB_CLIENT_ID, settings.GITHUB_CLIENT_SECRET),
+                    headers={
+                        "accept": "Application/vnd.github.v3+json",
+                    },
+                    json={"access_token": github_auth_token},
+                )
+                if r.status_code == 200:
+                    return True
+                else:
+                    raise auth_error
+        except httpx.HTTPError:
             raise auth_error
