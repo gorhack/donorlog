@@ -1,8 +1,12 @@
+import json
 import urllib.parse
 import uuid
+from base64 import b64encode, b64decode, urlsafe_b64encode
 from pathlib import Path
 from typing import Optional, Union, Dict
 
+from Crypto.Cipher import AES
+from Crypto.Random import get_random_bytes
 from fastapi import FastAPI, Request, HTTPException, status, Depends, Response
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -32,6 +36,9 @@ oauth2_scheme = OAuth2AuthorizationWithCookie(
 )
 BASE_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(Path(BASE_DIR, "templates")))
+
+# key used for state encryption
+key = get_random_bytes(16)
 
 
 class User(BaseModel):
@@ -176,36 +183,52 @@ async def handle_401(request: Request, exc: HTTPException):
     "/login/github",
     response_class=RedirectResponse,
     status_code=303,
-    tags=["login"],
+    tags=["Authentication"],
 )
 async def github_login():
     """
     Redirect the user to log into GitHub.
 
-    ***Cookie: `gh_login_state`*** Sets this cookie to prevent CSRF attacks during OAuth.
+    ***Cookie: `gh_login_state`*** Sets cookie with
+    [AEAD encrypted](https://www.pycryptodome.org/en/v3.14.1/src/cipher/modern.html#eax-mode-1)
+    state to prevent CSRF attacks during OAuth.
     """
-    state = uuid.uuid4().hex
+    # secrets.token_url_safe
+    state = urlsafe_b64encode(get_random_bytes(16)).rstrip(b"=").decode("utf-8")
     resp = RedirectResponse(
         github_oauth_handler.login(state),
         status_code=status.HTTP_303_SEE_OTHER,
     )
+    nonce = get_random_bytes(16)
+    cipher = AES.new(key, AES.MODE_EAX, nonce)
+    ct_state, tag = cipher.encrypt_and_digest(state.encode())
     resp.set_cookie(
         "gh_login_state",
-        value=state,
+        value=json.dumps(
+            {
+                "nonce": b64encode(nonce).decode("utf-8"),
+                "state": b64encode(ct_state).decode("utf-8"),
+                "tag": b64encode(tag).decode("utf-8"),
+            }
+        ),
         httponly=True,
-        # TODO is this the best way to verify state for CSRF?? Cannot samesite="strict"...
     )
     return resp
 
 
-@app.get("/logout", tags=["login"], response_class=RedirectResponse)
+@app.get(
+    "/logout",
+    tags=["Authentication"],
+    response_class=RedirectResponse,
+    status_code=status.HTTP_200_OK,
+)
 async def logout(current_user: Optional[User] = Depends(get_current_user)):
     """
     Remove the JWT from cookies and remove the GitHub access token from the database.
     """
     if current_user:
         current_user.github_auth_token = None
-    resp = RedirectResponse(app.url_path_for("root"))
+    resp = RedirectResponse(app.url_path_for("root"), status_code=status.HTTP_200_OK)
     delete_cookies(resp, "all")
     return resp
 
@@ -213,7 +236,7 @@ async def logout(current_user: Optional[User] = Depends(get_current_user)):
 @app.get(
     "/oauth/token",
     response_class=RedirectResponse,
-    tags=["login"],
+    tags=["Authentication"],
     response_model=Token,
 )
 async def access_token_from_authorization_code_flow(
@@ -224,11 +247,20 @@ async def access_token_from_authorization_code_flow(
     code from the OAuth authorizationCode flow and should contain the same state from
     the `gh_login_state` cookie.
     """
-    if state != request.cookies.get("gh_login_state"):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authorization check failed due to potential CSRF attack.",
-        )
+    state_error = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Authorization check failed due to potential CSRF attack.",
+    )
+    try:
+        cookie_state = json.loads(request.cookies.get("gh_login_state"))
+        cipher = AES.new(key, AES.MODE_EAX, nonce=b64decode(cookie_state.get("nonce")))
+        pt_state = cipher.decrypt_and_verify(
+            b64decode(cookie_state.get("state")), b64decode(cookie_state.get("tag"))
+        ).decode("utf-8")
+        if state != pt_state:
+            raise state_error
+    except (ValueError, KeyError):
+        raise state_error
     redirect_uri = request.headers.get("referer")
     if not redirect_uri:
         redirect_uri = str(request.base_url)
@@ -243,7 +275,7 @@ async def access_token_from_authorization_code_flow(
 @app.post(
     "/oauth/token",
     response_class=JSONResponse,
-    tags=["login"],
+    tags=["Authentication"],
     response_model=Token,
 )
 async def access_token_from_authorization_code_flow(request: Request):

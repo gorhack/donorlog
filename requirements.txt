@@ -10,6 +10,7 @@ requests==2.27.1
 
 # for jwt
 python-jose==3.3.0
+pycryptodome==3.14.1
 
 # for accessing form data
 python-multipart==0.0.5

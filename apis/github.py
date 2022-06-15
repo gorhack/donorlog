@@ -103,6 +103,11 @@ class GithubOAuth:
 
     @staticmethod
     def verify_user_auth_token(github_auth_token):
+        auth_error = HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
         try:
             token_url = f"{settings.GITHUB_REST_API_URL}/applications/{settings.GITHUB_CLIENT_ID}/token"
             r = requests.post(
@@ -116,6 +121,6 @@ class GithubOAuth:
             if r.status_code == 200:
                 return True
             else:
-                return False
+                raise auth_error
         except RequestException:
-            return False
+            raise auth_error
