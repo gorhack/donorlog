@@ -1,7 +1,8 @@
-from typing import Optional, Dict
+from typing import Optional, Dict, Union
 
 from fastapi import Request, HTTPException, status
 from fastapi.openapi.models import OAuthFlows as OAuthFlowsModel
+from fastapi.responses import RedirectResponse
 from fastapi.security import OAuth2
 from fastapi.security.utils import get_authorization_scheme_param
 from jose import JWTError
@@ -40,12 +41,14 @@ class OAuth2AuthorizationWithCookie(OAuth2):
             auto_error=auto_error,
         )
 
-    async def __call__(self, request: Request) -> Optional[UserTokenId]:
+    async def __call__(
+        self, request: Request
+    ) -> Union[None, UserTokenId, RedirectResponse]:
         # Authorization and access tokens are application Tokens (JWT, etc)
         authorization: str = request.cookies.get("access_token")
         if not authorization:
             authorization: str = request.headers.get("Authorization")
-        scheme, token = get_authorization_scheme_param(authorization)
+        scheme, param = get_authorization_scheme_param(authorization)
         if not authorization or scheme.lower() != "bearer":
             if self.auto_error:
                 raise HTTPException(
@@ -56,13 +59,22 @@ class OAuth2AuthorizationWithCookie(OAuth2):
             else:
                 return None
         try:
-            token = verify_jwt(token)
+            token = verify_jwt(param)
             return token
-        except (JWTError, ExpiredSignatureError, JWTClaimsError):
+        except ExpiredSignatureError:
             if self.auto_error:
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail=f"Not authenticated: Invalid Token.",
+                    detail="Token Expired.",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+            else:
+                return None
+        except (JWTError, JWTClaimsError):
+            if self.auto_error:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Not authenticated: Invalid Token.",
                     headers={"WWW-Authenticate": "Bearer"},
                 )
             else:

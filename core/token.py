@@ -9,7 +9,7 @@ from core.config import settings
 
 
 class UserTokenId(BaseModel):
-    key: str
+    user_id: str
     username: str
 
 
@@ -19,7 +19,8 @@ class Token(BaseModel):
 
 
 class Payload(BaseModel):
-    key: str
+    token_id: str
+    user_id: str
     username: str
     issued_at: datetime
     expired_at: datetime
@@ -27,18 +28,27 @@ class Payload(BaseModel):
 
 class TokenMaker(ABC):
     # TODO: use PASETO tokens: https://dev.to/techschoolguru/how-to-create-and-verify-jwt-paseto-token-in-golang-1l5j
-    def create_token(self, username: str, duration: Optional[timedelta] = None) -> str:
+    def create_token(
+        self,
+        user_id: uuid.UUID,
+        username: str,
+        duration: Optional[timedelta] = None,
+    ) -> str:
         raise NotImplementedError()
 
 
-def new_payload(username: str, duration: Optional[timedelta] = None) -> Payload:
-    token_key = str(uuid.uuid4())
+def new_payload(
+    user_id: uuid.UUID,
+    username: str,
+    duration: Optional[timedelta] = None,
+) -> Payload:
     if duration:
         expire = datetime.utcnow() + duration
     else:
         expire = datetime.utcnow() + timedelta(minutes=settings.TOKEN_EXPIRE_MINUTES)
     payload = Payload(
-        key=token_key,
+        token_id=str(uuid.uuid4()),
+        user_id=str(user_id),
         username=username,
         issued_at=datetime.utcnow(),
         expired_at=expire,

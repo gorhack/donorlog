@@ -13,7 +13,7 @@ from starlette.responses import JSONResponse
 from apis.github import GithubOAuth
 from apis.utils import OAuth2AuthorizationWithCookie
 from core.config import settings
-from core.jwt_token import new_jwt_maker
+from core.jwt_token import new_jwt_maker, refresh_jwt
 from core.token import UserTokenId, Token
 
 app = FastAPI(
@@ -29,13 +29,13 @@ github_oauth_handler = GithubOAuth()
 oauth2_scheme = OAuth2AuthorizationWithCookie(
     authorizationUrl=settings.GITHUB_LOGIN_URL,
     tokenUrl="/oauth/token",
-    auto_error=False,
 )
 BASE_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(Path(BASE_DIR, "templates")))
 
 
 class User(BaseModel):
+    user_id: uuid.UUID
     github_username: str
     github_id: int
     github_email: Union[str, None] = None
@@ -44,6 +44,7 @@ class User(BaseModel):
 
 fake_user_db: Dict[str, User] = {
     "gorhack": User(
+        user_id="981a14c0-0fa1-4b89-bc63-cec1e8c70c2d",
         github_username="gorhack",
         github_id=123456,
         github_email="gorhack@example.com",
@@ -52,8 +53,7 @@ fake_user_db: Dict[str, User] = {
 }
 
 
-def get_user(db: dict, username: str) -> Optional[User]:
-    # TODO use key instead of username
+def get_user_by_username(db: dict, username: str) -> Optional[User]:
     return db.get(username)
 
 
@@ -74,44 +74,30 @@ async def get_current_user(
     if not token:
         return None
     if token:
-        user = get_user(fake_user_db, token.username)
+        user = get_user_by_username(fake_user_db, token.username)
         if verify_user(user):
             return user
     return None
 
 
 @app.get("/", response_class=HTMLResponse)
-async def root(
-    request: Request, current_user: Optional[User] = Depends(get_current_user)
-):
-    github_username = None
-    github_monthly_sponsorship_amount = None
-    if current_user:
-        github_username = current_user.github_username
-        github_monthly_sponsorship_amount = (
-            github_oauth_handler.get_user_monthly_sponsorship_amount(
-                current_user.github_auth_token, github_username
-            )
-        )
-
+async def root(request: Request):
     return templates.TemplateResponse(
         "index.html",
         {
             "request": request,
-            "github_username": github_username,
-            "github_monthly_sponsorship_amount": github_monthly_sponsorship_amount,
         },
     )
 
 
-@app.get("/users/me")
-async def read_users_me(current_user: User = Depends(get_current_user)):
+@app.get("/users/me", response_model=User)
+async def read_current_user(current_user: User = Depends(get_current_user)):
     return current_user
 
 
-@app.get("/token")
-async def read_items(token=Depends(oauth2_scheme)):
-    return {"token": token}
+@app.get("/token", response_model=UserTokenId)
+async def read_user_token(token=Depends(oauth2_scheme)):
+    return token
 
 
 @app.get("/search/{github_username}")
@@ -130,11 +116,20 @@ async def search_overview(github_username: str):
     }
 
 
+def delete_cookies(response: Response, *cookies: str):
+    if cookies.count("all") > 0:
+        cookies = "gh_login_state", "access_token"
+    for cookie in cookies:
+        response.delete_cookie(cookie)
+    return response
+
+
 def set_bearer_cookie(response: Response, token: str):
     response.set_cookie(
         key="access_token",
         value=f"Bearer {token}",
         httponly=True,
+        samesite="strict",
     )
     return response
 
@@ -142,14 +137,42 @@ def set_bearer_cookie(response: Response, token: str):
 def cookie_from_access_token(access_token: str):
     user = github_oauth_handler.get_user_details(access_token)
     username = user.get("username")
-    fake_user_db.get(username).github_auth_token = access_token
+    # TODO get_user_by_github_id
+    db_user = get_user_by_username(fake_user_db, username)
+    if db_user:
+        user_id = db_user.user_id
+        db_user.github_auth_token = access_token
+    else:
+        # TODO create db user and let the db create the UUID
+        user_id = uuid.uuid4()
+        raise NotImplementedError("Unable to create a new user")
     # Note: The JWT stored does not actually contain the access_token from
-    # GitHub and requires authentication with the database to retrieve the
-    # user's stored access_code.
-    return new_jwt_maker().create_token(username=username)
+    # GitHub and requires the database to retrieve the user's stored access_code.
+    return new_jwt_maker().create_token(
+        user_id=user_id,
+        username=username,
+    )
 
 
-@app.post(
+@app.exception_handler(status.HTTP_401_UNAUTHORIZED)
+async def handle_401(request: Request, exc: HTTPException):
+    if exc.detail == "Token Expired.":
+        token = refresh_jwt(fake_user_db, request.cookies.get("access_token"))
+        if token:
+            resp = RedirectResponse(request.url)
+            set_bearer_cookie(resp, token)
+            return resp
+    if exc.headers and exc.headers.get("WWW-Authenticate") == "Bearer":
+        return RedirectResponse(
+            app.url_path_for("github_login"), status_code=status.HTTP_303_SEE_OTHER
+        )
+    resp = RedirectResponse(app.url_path_for("root"))
+    delete_cookies(resp, "all")
+    # TODO other 401...?
+    return resp
+
+
+@app.get(
     "/login/github",
     response_class=RedirectResponse,
     status_code=303,
@@ -166,7 +189,24 @@ async def github_login():
         github_oauth_handler.login(state),
         status_code=status.HTTP_303_SEE_OTHER,
     )
-    resp.set_cookie("gh_login_state", value=state, httponly=True)
+    resp.set_cookie(
+        "gh_login_state",
+        value=state,
+        httponly=True,
+        # TODO is this the best way to verify state for CSRF?? Cannot samesite="strict"...
+    )
+    return resp
+
+
+@app.get("/logout", tags=["login"], response_class=RedirectResponse)
+async def logout(current_user: Optional[User] = Depends(get_current_user)):
+    """
+    Remove the JWT from cookies and remove the GitHub access token from the database.
+    """
+    if current_user:
+        current_user.github_auth_token = None
+    resp = RedirectResponse(app.url_path_for("root"))
+    delete_cookies(resp, "all")
     return resp
 
 
@@ -184,7 +224,7 @@ async def access_token_from_authorization_code_flow(
     code from the OAuth authorizationCode flow and should contain the same state from
     the `gh_login_state` cookie.
     """
-    if state is not request.cookies.get("gh_login_state"):
+    if state != request.cookies.get("gh_login_state"):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authorization check failed due to potential CSRF attack.",
@@ -194,8 +234,7 @@ async def access_token_from_authorization_code_flow(
         redirect_uri = str(request.base_url)
     access_token = github_oauth_handler.get_access_token(code, redirect_uri)
     resp = RedirectResponse(redirect_uri)
-    resp.delete_cookie("gh_login_state")
-    resp.delete_cookie("gh_login_referer")
+    delete_cookies(resp, "gh_login_state")
     cookie = cookie_from_access_token(access_token)
     resp = set_bearer_cookie(resp, cookie)
     return resp

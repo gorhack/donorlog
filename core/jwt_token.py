@@ -1,3 +1,4 @@
+import uuid
 from datetime import timedelta
 from typing import Optional
 
@@ -9,14 +10,22 @@ from core.token import TokenMaker, new_payload, UserTokenId
 
 class JWTMaker(TokenMaker):
     def create_token(
-        self, username: str, duration: Optional[timedelta] = None
+        self,
+        user_id: uuid.UUID,
+        username: str,
+        duration: Optional[timedelta] = None,
     ) -> Optional[str]:
-        payload = new_payload(username=username, duration=duration)
+        payload = new_payload(
+            user_id=user_id,
+            username=username,
+            duration=duration,
+        )
         to_encode: dict = {
-            "sub": payload.username,
+            "sub": payload.user_id,
             "exp": payload.expired_at,
             "iat": payload.issued_at,
-            "jti": payload.key,
+            "jti": payload.token_id,
+            "preferred_username": payload.username,
         }
         try:
             jwt_token = jwt.encode(
@@ -44,4 +53,20 @@ def verify_jwt(token: str) -> Optional[UserTokenId]:
         options={"require_exp": True, "require_sub": True, "require_jti": True},
         algorithms=[settings.JWT_ALGORITHM],
     )
-    return UserTokenId(key=payload.get("jti"), username=payload.get("sub"))
+    return UserTokenId(
+        user_id=payload.get("sub"),
+        username=payload.get("preferred_username"),
+    )
+
+
+def refresh_jwt(db: dict, token: str) -> Optional[str]:
+    # split removes the "Bearer " from the token
+    claims = jwt.get_unverified_claims(token.split(" ")[1])
+    user = db.get(claims.get("preferred_username"))
+    if user.github_auth_token:
+        return new_jwt_maker().create_token(
+            user_id=user.user_id,
+            username=user.github_username,
+        )
+    else:
+        return None

@@ -6,7 +6,7 @@
 </head>
 <body>
 {% if not github_username %}
-<form action="/login/github" method="post">
+<form action="/login/github" method="get">
     <input type="submit" value="Login with Github"/>
 </form>
 {% else %}
