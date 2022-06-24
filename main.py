@@ -37,7 +37,10 @@ BASE_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(Path(BASE_DIR, "templates")))
 
 # key used for state encryption
-key = get_random_bytes(16)
+# not worried about key changing when reloading the application because
+# the encrypted state is only used during login process and if it fails
+# will just result in the user having to log in again.
+STATE_ENCRYPTION_KEY = get_random_bytes(16)
 
 
 class User(BaseModel):
@@ -189,6 +192,9 @@ async def cookie_from_access_token(access_token: str):
         raise NotImplementedError("Unable to create a new user")
     # Note: The JWT stored does not actually contain the access_token from
     # GitHub and requires the database to retrieve the user's stored access_code.
+    # Since we have to query the database to retrieve the access_token every time
+    # it might be a good idea to just use a session cookie within the db or use
+    # JWE to encrypt the payload to include the access token
     return new_jwt_maker().create_token(
         user_id=user_id,
         username=username,
@@ -226,14 +232,14 @@ async def github_login():
     [AEAD encrypted](https://www.pycryptodome.org/en/v3.14.1/src/cipher/modern.html#eax-mode-1)
     state to prevent CSRF attacks during OAuth.
     """
-    # secrets.token_url_safe
+    # secrets.token_url_safe equivalent
     state = urlsafe_b64encode(get_random_bytes(16)).rstrip(b"=").decode("utf-8")
     resp = RedirectResponse(
         github_oauth_handler.login(state),
         status_code=status.HTTP_307_TEMPORARY_REDIRECT,
     )
     nonce = get_random_bytes(16)
-    cipher = AES.new(key, AES.MODE_EAX, nonce)
+    cipher = AES.new(STATE_ENCRYPTION_KEY, AES.MODE_EAX, nonce)
     ct_state, tag = cipher.encrypt_and_digest(state.encode())
     resp.set_cookie(
         "gh_login_state",
@@ -291,7 +297,11 @@ async def access_token_from_authorization_code_flow(
     )
     try:
         cookie_state = json.loads(request.cookies.get("gh_login_state"))
-        cipher = AES.new(key, AES.MODE_EAX, nonce=b64decode(cookie_state.get("nonce")))
+        cipher = AES.new(
+            STATE_ENCRYPTION_KEY,
+            AES.MODE_EAX,
+            nonce=b64decode(cookie_state.get("nonce")),
+        )
         pt_state = cipher.decrypt_and_verify(
             b64decode(cookie_state.get("state")), b64decode(cookie_state.get("tag"))
         ).decode("utf-8")
