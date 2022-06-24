@@ -7,7 +7,7 @@ from typing import Optional, Union, Dict
 
 from Crypto.Cipher import AES
 from Crypto.Random import get_random_bytes
-from fastapi import FastAPI, Request, HTTPException, status, Depends, Response
+from fastapi import FastAPI, Request, HTTPException, status, Depends, Response, Form
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
@@ -32,6 +32,14 @@ github_oauth_handler = GithubOAuth
 oauth2_scheme = OAuth2AuthorizationWithCookie(
     authorizationUrl=settings.GITHUB_LOGIN_URL,
     tokenUrl="/oauth/token",
+    auto_error=True,
+)
+# oauth2_scheme_no_error will not display a 401 if unauthenticated resulting in
+# automatic user login request. Only used on the root page.
+oauth2_scheme_no_error = OAuth2AuthorizationWithCookie(
+    authorizationUrl=settings.GITHUB_LOGIN_URL,
+    tokenUrl="/oauth/token",
+    auto_error=False,
 )
 BASE_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(Path(BASE_DIR, "templates")))
@@ -99,10 +107,20 @@ async def get_current_user(
 
 
 @app.get("/", response_class=HTMLResponse)
-async def root(request: Request):
+async def root(
+    request: Request,
+    token: UserTokenId = Depends(oauth2_scheme_no_error),
+):
+    # immediately after logging in, the redirect response from /oauth/token
+    # does not contain the token yet in this request
+    github_username = ""
+    current_user = await get_current_user(token)
+    if current_user:
+        github_username = current_user.github_username
     return templates.TemplateResponse(
         "index.html",
         {
+            "github_username": github_username,
             "request": request,
         },
     )
@@ -114,6 +132,7 @@ async def root(request: Request):
         status.HTTP_200_OK: {"model": User},
         status.HTTP_401_UNAUTHORIZED: {"model": HTTPError},
     },
+    tags=["User Information"],
 )
 async def read_current_user(current_user: User = Depends(get_current_user)):
     return current_user
@@ -125,9 +144,26 @@ async def read_current_user(current_user: User = Depends(get_current_user)):
         status.HTTP_200_OK: {"model": UserTokenId},
         status.HTTP_401_UNAUTHORIZED: {"model": HTTPError},
     },
+    tags=["User Information"],
 )
 async def read_user_token(token=Depends(oauth2_scheme)):
     return token
+
+
+@app.post(
+    "/search",
+    response_class=RedirectResponse,
+    tags=["Search"],
+)
+async def search_redirect(github_username: str = Form()):
+    """
+    Search the current authenticated based on the root search form. Redirects to the standard
+    GET /search/{github_username}
+    """
+    return RedirectResponse(
+        app.url_path_for("search_overview", github_username=github_username),
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
 
 
 @app.get(
@@ -139,6 +175,7 @@ async def read_user_token(token=Depends(oauth2_scheme)):
             "description": "User not verified.",
         },
     },
+    tags=["Search"],
 )
 async def search_overview(github_username: str):
     """
@@ -309,6 +346,8 @@ async def access_token_from_authorization_code_flow(
             raise state_error
     except (ValueError, KeyError):
         raise state_error
+    # if the redirect url doesn't match the registered callback URL, GitHub will return 400
+    # unhandled exception redirect_uri_mismatch
     redirect_uri = request.headers.get("referer")
     if not redirect_uri:
         redirect_uri = str(request.base_url)

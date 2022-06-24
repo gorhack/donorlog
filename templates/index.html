@@ -13,11 +13,10 @@
 <form action="/search" method="post">
     <p>Github username: {{ github_username }}</p>
     <input type="hidden" name="github_username" value="{{ github_username }}"/>
-    {% if github_monthly_sponsorship_amount != None %}
-    <p>GitHub Monthly Amount: ${{ github_monthly_sponsorship_amount }}/mo</p>
-    <input type="hidden" name="github_monthly_sponsorship_amount" value="{{ github_monthly_sponsorship_amount }}"/>
-    {% endif %}
-    <p><input type="submit" value="submit"/></p>
+    <p><input type="submit" value="search"/></p>
+</form>
+<form action="/logout" method="get">
+    <input type="submit" value="logout">
 </form>
 {% endif %}
 </body>
