@@ -1,10 +1,11 @@
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, AsyncMock
 
+import pytest
 from fastapi import status
 from fastapi.testclient import TestClient
 
 from apis.github import GithubOAuth
-from ..main import app, get_current_user, User
+from ..main import app
 
 client = TestClient(app)
 
@@ -18,32 +19,21 @@ class TestTemplates:
             response.content
         )
 
-    some_user = User(
-        github_username="gorhack",
-        github_id=123456,
-        github_email="gorhack@example.com",
-        github_auth_token="my-valid-oauth-token",
-    )
-
-    async def override_get_current_user(self):
-        return self.some_user
-
-    @patch.object(GithubOAuth, "get_user_monthly_sponsorship_amount")
-    def test_github_login(self, mock_method: MagicMock):
-        app.dependency_overrides[get_current_user] = self.override_get_current_user
-        response = client.get("/")
-        assert mock_method.call_args.args[0] is self.some_user.github_auth_token
-        assert mock_method.call_args.args[1] is self.some_user.github_username
-        assert response.status_code == 200
-        assert """<p>Github username: gorhack</p>""" in str(response.content)
-
 
 class TestGithubApi:
-    def test_get_github_username(self):
+    @pytest.mark.asyncio
+    @patch.multiple(
+        GithubOAuth,
+        verify_user_auth_token=AsyncMock(return_value=True),
+        get_user_monthly_sponsorship_amount=AsyncMock(return_value="42"),
+    )
+    async def test_get_github_search_overview(self):
+        # TODO app.dependency_overrides[get_db_user] to override actual database user
         response = client.get("/search/gorhack")
-        assert response.status_code == status.HTTP_404_NOT_FOUND
+        assert response.status_code == status.HTTP_200_OK
         assert response.json() == {
-            "detail": "User not found.",
+            "github_username": "gorhack",
+            "github_monthly_sponsorship_amount": 42,
         }
 
 
@@ -56,6 +46,6 @@ class TestSearchErrorHandling:
 
     def test_get_search_error(self):
         # once there are multiple search options only error when all are empty
-        response = client.get("/search/gorhack")
+        response = client.get("/search/not_a_user")
         assert response.status_code == status.HTTP_404_NOT_FOUND
-        assert response.json() == {"detail": "User not found."}
+        assert response.json() == {"detail": "User not verified."}

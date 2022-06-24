@@ -28,7 +28,7 @@ app = FastAPI(
         "clientId": settings.GITHUB_CLIENT_ID,
     },
 )
-github_oauth_handler = GithubOAuth()
+github_oauth_handler = GithubOAuth
 oauth2_scheme = OAuth2AuthorizationWithCookie(
     authorizationUrl=settings.GITHUB_LOGIN_URL,
     tokenUrl="/oauth/token",
@@ -93,7 +93,7 @@ async def get_current_user(
         return None
     if token:
         user = get_user_by_username(fake_user_db, token.username)
-        if verify_user(user):
+        if await verify_user(user):
             return user
     return None
 
