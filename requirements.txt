@@ -7,7 +7,7 @@ Jinja2==3.1.2
 
 # for testing
 pytest==7.1.2
-requests==2.27.1
+requests==2.31.0
 
 # for jwt
 python-jose==3.3.0
