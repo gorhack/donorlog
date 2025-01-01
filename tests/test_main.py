@@ -6,7 +6,7 @@ from fastapi import status
 from fastapi.testclient import TestClient
 
 from apis.github import GithubOAuth
-from core.token import UserTokenId
+from core.user_token import UserTokenId
 from main import app, get_current_user, User, oauth2_scheme_no_error
 
 client = TestClient(app)

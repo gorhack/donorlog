@@ -11,13 +11,12 @@ from fastapi import FastAPI, Request, HTTPException, status, Depends, Response, 
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel
 
 from apis.github import GithubOAuth
 from apis.utils import OAuth2AuthorizationWithCookie
 from core.config import settings
 from core.jwt_token import new_jwt_maker, refresh_jwt
-from core.token import UserTokenId, Token
+from core.user_token import UserTokenId, Token, BaseModel
 
 app = FastAPI(
     title=settings.PROJECT_NAME,

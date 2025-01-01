@@ -1,21 +1,21 @@
-fastapi==0.78.0
-uvicorn==0.17.6
-httpx==0.23.0
+fastapi==0.115.6
+uvicorn==0.34.6
+httpx==0.28.1
 
 # for template
-Jinja2==3.1.2
+Jinja2==3.1.5
 
 # for testing
-pytest==7.1.2
-requests==2.27.1
+pytest==8.3.4
+requests==2.32.3
 
 # for jwt
 python-jose==3.3.0
-pycryptodome==3.14.1
+pycryptodome==3.21.0
 
 # for accessing form data
-python-multipart==0.0.5
+python-multipart==0.0.20
 
 # for types
-typing_extensions==4.2.0
-pydantic==1.9.1
+typing_extensions==4.12.3
+pydantic==2.10.4

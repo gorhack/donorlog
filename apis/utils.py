@@ -1,7 +1,7 @@
 from typing import Optional, Dict, Union
 
 from fastapi import Request, HTTPException, status
-from fastapi.openapi.models import OAuthFlows as OAuthFlowsModel
+from fastapi.openapi.models import OAuthFlows as OAuthFlowsModel, OAuthFlowAuthorizationCode
 from fastapi.responses import RedirectResponse
 from fastapi.security import OAuth2
 from fastapi.security.utils import get_authorization_scheme_param
@@ -9,7 +9,7 @@ from jose import JWTError
 from jose.exceptions import JWTClaimsError, ExpiredSignatureError
 
 from core.jwt_token import verify_jwt
-from core.token import UserTokenId
+from core.user_token import UserTokenId
 
 
 # noinspection PyPep8Naming
@@ -27,12 +27,11 @@ class OAuth2AuthorizationWithCookie(OAuth2):
         if not scopes:
             scopes = {}
         flows = OAuthFlowsModel(
-            authorizationCode={
-                "authorizationUrl": authorizationUrl,
-                "tokenUrl": tokenUrl,
-                "refreshUrl": refreshUrl,
-                "scopes": scopes,
-            }
+            authorizationCode=OAuthFlowAuthorizationCode(
+                authorizationUrl=authorizationUrl,
+                tokenUrl=tokenUrl,
+                refreshUrl=refreshUrl,
+                scopes=scopes)
         )
         super().__init__(
             flows=flows,

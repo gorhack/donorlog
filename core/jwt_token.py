@@ -5,7 +5,7 @@ from typing import Optional
 from jose import jwt, JWTError
 
 from core.config import settings
-from core.token import TokenMaker, new_payload, UserTokenId
+from core.user_token import TokenMaker, new_payload, UserTokenId
 
 
 class JWTMaker(TokenMaker):
