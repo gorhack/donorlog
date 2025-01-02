@@ -4,6 +4,7 @@ import httpx
 from fastapi import HTTPException, status
 
 from core.config import settings
+from users.users_schema import User
 
 
 # Extended from: https://github.com/rohanshiva/Github-Login-FastAPI
@@ -16,6 +17,7 @@ class GithubOAuth:
             "client_id": settings.GITHUB_CLIENT_ID,
             "redirect_uri": settings.GITHUB_REDIRECT_URL,
             "state": state,
+            "scope": ""  # only access public data... read:user access some private data
         }
         params = urlencode(params)
         return settings.GITHUB_LOGIN_URL + params
@@ -48,7 +50,7 @@ class GithubOAuth:
             )
 
     @staticmethod
-    async def get_user_details(access_token):
+    async def get_user_details(access_token) -> User:
         try:
             async with httpx.AsyncClient() as client:
                 r = await client.get(
@@ -56,16 +58,9 @@ class GithubOAuth:
                     headers={"Authorization": "token " + access_token},
                 )
                 if r.status_code == 200 and not r.json().get("error"):
-                    key = str(r.json().get("id"))
                     email = r.json().get("email")
                     username = r.json().get("login")
-                    name = r.json().get("name")
-                    return {
-                        "key": key,
-                        "email": email,
-                        "username": username,
-                        "name": name,
-                    }
+                    return User(email=email, github_username=username, github_auth_token="")
                 else:
                     raise HTTPException(
                         status_code=r.status_code, detail=r.content.decode("utf-8")
@@ -74,7 +69,7 @@ class GithubOAuth:
             raise HTTPException(status_code=401, detail="Failed to fetch user details")
 
     @staticmethod
-    async def get_user_monthly_sponsorship_amount(access_token, username):
+    async def get_user_monthly_sponsorship_amount(access_token, username) -> int:
         # TODO: calculate total amount donated, not just current month
         # fmt: off
         query = (
@@ -99,7 +94,7 @@ class GithubOAuth:
                         "totalRecurringMonthlyPriceInDollars"
                     ]
                 else:
-                    raise HTTPException(status_code=r.status_code, detail=r.content)
+                    raise HTTPException(status_code=r.status_code, detail=r.text)
         except httpx.HTTPError:
             raise HTTPException(status_code=401, detail="Failed to fetch user details")
 

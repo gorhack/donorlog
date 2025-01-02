@@ -8,10 +8,14 @@ Jinja2==3.1.5
 # for testing
 pytest==8.3.4
 requests==2.32.3
+pytest-asyncio==0.25.1
 
 # for jwt
 python-jose==3.3.0
 pycryptodome==3.21.0
+
+# for session
+itsdangerous==2.2.0
 
 # for accessing form data
 python-multipart==0.0.20
@@ -19,3 +23,6 @@ python-multipart==0.0.20
 # for types
 typing_extensions==4.12.3
 pydantic==2.10.4
+
+# postgres
+asyncpg==0.30.0
