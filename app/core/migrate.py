@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 
-from postgres import database
+from app.core.postgres import database
 
 
 async def create_table():

@@ -1,6 +1,6 @@
-from postgres import database
-from users import users_schema
-from users.users_schema import User
+from app.apis.users import users_schema
+from app.apis.users.users_schema import User
+from app.core.postgres import database
 
 
 async def insert_user_or_update_auth_token(user: users_schema.User):

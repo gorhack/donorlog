@@ -1,9 +1,9 @@
 from fastapi import APIRouter, HTTPException, status
 
-from apis.github import GithubOAuth
-from users import users_schema
-from users.users_model import lookup_by_github_username
-from users.users_schema import DisplayUser
+from app.apis.github import GithubOAuth
+from app.apis.users import users_schema
+from app.apis.users.users_model import lookup_by_github_username
+from app.apis.users.users_schema import DisplayUser
 
 users_router = APIRouter(prefix="/users", tags=["User API"])
 

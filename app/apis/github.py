@@ -3,8 +3,8 @@ from urllib.parse import urlencode
 import httpx
 from fastapi import HTTPException, status
 
-from core.config import settings
-from users.users_schema import User
+from app.apis.users.users_schema import User
+from app.core.config import settings
 
 
 # Extended from: https://github.com/rohanshiva/Github-Login-FastAPI
@@ -70,6 +70,27 @@ class GithubOAuth:
 
     @staticmethod
     async def get_user_monthly_sponsorship_amount(access_token, username) -> int:
+        """"
+        TODO: user:totalSponsorshipAmountAsSponsorInCents for total amount donated all time
+        TODO: user:sponsoring:totalCount -> user:sponsoring(first: x) for User and Organizations sponsoring
+        {
+          user(login: "{username}") {
+            sponsorshipsAsSponsor {
+              totalRecurringMonthlyPriceInDollars
+            }
+            totalSponsorshipAmountAsSponsorInCents(since: "1970-01-01T12:00:00")
+            sponsoring(first: 10) {
+              totalCount
+              nodes {
+                __typename
+                ... on ProfileOwner {
+                  login
+                }
+              }
+            }
+          }
+        }
+        """
         # TODO: calculate total amount donated, not just current month
         # fmt: off
         query = (

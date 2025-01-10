@@ -2,7 +2,7 @@ from unittest.mock import patch, AsyncMock
 
 from fastapi import status
 
-from apis.github import GithubOAuth
+from app.apis.github import GithubOAuth
 from tests.test_main import async_client_with_user, async_client
 
 

@@ -11,15 +11,15 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-import migrate
-from apis.github import GithubOAuth
+from app.apis.github import GithubOAuth
+from app.apis.users import users_schema
+from app.apis.users.users_model import insert_user_or_update_auth_token, lookup_by_github_username
+from app.apis.users.users_route import users_router
+from app.apis.utils import HTTPError
+from app.core import migrate
+from app.core.config import settings
+from app.core.postgres import database
 from app.session.session_layer import validate_session, create_random_session_string
-from core.config import settings
-from postgres import database
-from users import users_schema
-from users.users_model import insert_user_or_update_auth_token, lookup_by_github_username
-from users.users_route import users_router
-from utils import HTTPError
 
 
 @asynccontextmanager
@@ -39,7 +39,7 @@ app.include_router(users_router)
 app.add_middleware(SessionMiddleware, secret_key=settings.SESSION_SECRET)
 
 BASE_DIR = Path(__file__).resolve().parent
-templates = Jinja2Templates(directory=str(Path(BASE_DIR, "../templates")))
+templates = Jinja2Templates(directory=str(Path(BASE_DIR, "templates")))
 
 # key used for state encryption
 # not worried about key changing when reloading the application because
@@ -77,8 +77,9 @@ async def root(
                 access_token=user.github_auth_token,
                 username=github_username)
     return templates.TemplateResponse(
-        "index.html",
-        {
+        request=request,
+        name="index.html",
+        context={
             "github_username": github_username,
             "donation_amount": donation_amount,
             "request": request,

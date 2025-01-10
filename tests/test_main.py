@@ -4,13 +4,12 @@ from unittest.mock import patch, PropertyMock
 import pytest
 from httpx import AsyncClient, ASGITransport
 
-import migrate
-from apis.github import GithubOAuth
+from app.apis.github import GithubOAuth
+from app.core import migrate
+from app.core.postgres import database
 from app.main import app
-from postgres import database
 
 
-@pytest.mark.anyio
 @pytest.fixture
 async def async_client():
     # TODO change RDS_DATABASE_URL for tests
