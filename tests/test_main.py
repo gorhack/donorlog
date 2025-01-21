@@ -57,12 +57,18 @@ class TestHome:
         )
 
     @patch.object(GithubOAuth, "get_user_monthly_sponsorship_amount", return_value=42)
+    @patch.object(GithubOAuth, "get_user_total_sponsorship_amount", return_value=1337)
     async def test_get_home_database_authenticated(self, mock_get_user_monthly_sponsorship_amount,
+                                                   mock_get_user_total_sponsorship_amount,
                                                    async_client_with_user):
         response = await async_client_with_user.get("/")
         assert response.status_code == 200
         assert """<p>GitHub username: gorhack</p>""" in response.text
         mock_get_user_monthly_sponsorship_amount.assert_called_once_with(
+            access_token="test_access_token",
+            username="gorhack"
+        )
+        mock_get_user_total_sponsorship_amount.assert_called_once_with(
             access_token="test_access_token",
             username="gorhack"
         )

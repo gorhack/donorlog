@@ -65,7 +65,8 @@ async def root(
         is_valid_session: bool = Depends(validate_session),
 ):
     github_username = None
-    donation_amount = None
+    monthly_donation_amount = None
+    total_donation_amount = None
     if is_valid_session:
         # lookup user
         github_username = request.session.get("username")
@@ -73,7 +74,10 @@ async def root(
         # TODO check if auth token is still valid
         if user:
             github_username = user.github_username
-            donation_amount = await GithubOAuth.get_user_monthly_sponsorship_amount(
+            monthly_donation_amount = await GithubOAuth.get_user_monthly_sponsorship_amount(
+                access_token=user.github_auth_token,
+                username=github_username)
+            total_donation_amount = await GithubOAuth.get_user_total_sponsorship_amount(
                 access_token=user.github_auth_token,
                 username=github_username)
     return templates.TemplateResponse(
@@ -81,7 +85,8 @@ async def root(
         name="index.html",
         context={
             "github_username": github_username,
-            "donation_amount": donation_amount,
+            "monthly_donation_amount": f'{monthly_donation_amount/100:,.2f}' if monthly_donation_amount else None,
+            "total_donation_amount": f'{total_donation_amount/100:,.2f}' if total_donation_amount else None,
             "request": request,
         },
     )

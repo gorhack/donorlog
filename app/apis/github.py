@@ -70,34 +70,13 @@ class GithubOAuth:
 
     @staticmethod
     async def get_user_monthly_sponsorship_amount(access_token, username) -> int:
-        """"
-        TODO: user:totalSponsorshipAmountAsSponsorInCents for total amount donated all time
-        TODO: user:sponsoring:totalCount -> user:sponsoring(first: x) for User and Organizations sponsoring
-        {
-          user(login: "{username}") {
-            sponsorshipsAsSponsor {
-              totalRecurringMonthlyPriceInDollars
-            }
-            totalSponsorshipAmountAsSponsorInCents(since: "1970-01-01T12:00:00")
-            sponsoring(first: 10) {
-              totalCount
-              nodes {
-                __typename
-                ... on ProfileOwner {
-                  login
-                }
-              }
-            }
-          }
-        }
-        """
-        # TODO: calculate total amount donated, not just current month
+        # TODO totalRecurringMonthlyPriceInCents does not include one-time sponshorships
         # fmt: off
         query = (
             "query {"
                 f'user(login: "{username}") {{'
-                    "sponsorshipsAsSponsor(last: 100) {"
-                        "totalRecurringMonthlyPriceInDollars"
+                    "sponsorshipsAsSponsor {"
+                        "totalRecurringMonthlyPriceInCents"
                     "}"
                 "}"
             "}"
@@ -112,8 +91,33 @@ class GithubOAuth:
                 )
                 if r.status_code == 200:
                     return r.json()["data"]["user"]["sponsorshipsAsSponsor"][
-                        "totalRecurringMonthlyPriceInDollars"
+                        "totalRecurringMonthlyPriceInCents"
                     ]
+                else:
+                    raise HTTPException(status_code=r.status_code, detail=r.text)
+        except httpx.HTTPError:
+            raise HTTPException(status_code=401, detail="Failed to fetch user details")
+
+    @staticmethod
+    async def get_user_total_sponsorship_amount(access_token, username) -> int:
+        # fmt: off
+        query = (
+            "query {"
+                f'user(login: "{username}") {{'
+                    "totalSponsorshipAmountAsSponsorInCents(since: \"1970-01-01T12:00:00\")"
+                "}"
+            "}"
+        )
+        # fmt: on
+        try:
+            async with httpx.AsyncClient() as client:
+                r = await client.post(
+                    settings.GITHUB_GRAPHQL_API_URL,
+                    headers={"Authorization": "bearer " + access_token},
+                    json={"query": query},
+                )
+                if r.status_code == 200:
+                    return r.json()["data"]["user"]["totalSponsorshipAmountAsSponsorInCents"]
                 else:
                     raise HTTPException(status_code=r.status_code, detail=r.text)
         except httpx.HTTPError:
