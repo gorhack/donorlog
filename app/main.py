@@ -12,7 +12,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.apis.github import GithubOAuth
-from app.apis.users import users_schema
+from app.apis.opencollective import OpenCollectiveOAuth
 from app.apis.users.users_model import insert_user_or_update_auth_token, lookup_by_github_username
 from app.apis.users.users_route import users_router
 from app.apis.utils import HTTPError
@@ -48,17 +48,6 @@ templates = Jinja2Templates(directory=str(Path(BASE_DIR, "templates")))
 STATE_ENCRYPTION_KEY = get_random_bytes(16)
 
 
-async def verify_user_auth_token(user: users_schema.User):
-    if (
-            user
-            and user.github_auth_token
-            and await GithubOAuth.verify_user_auth_token(user.github_auth_token)
-    ):
-        return True
-    else:
-        return False
-
-
 @app.get("/", response_class=HTMLResponse)
 async def root(
         request: Request,
@@ -85,8 +74,9 @@ async def root(
         name="index.html",
         context={
             "github_username": github_username,
-            "monthly_donation_amount": f'{monthly_donation_amount/100:,.2f}' if monthly_donation_amount else None,
-            "total_donation_amount": f'{total_donation_amount/100:,.2f}' if total_donation_amount else None,
+            "opencollective_username": None,
+            "monthly_donation_amount": f'{monthly_donation_amount / 100:,.2f}' if monthly_donation_amount else None,
+            "total_donation_amount": f'{total_donation_amount / 100:,.2f}' if total_donation_amount else None,
             "request": request,
         },
     )
@@ -129,6 +119,42 @@ async def github_login():
 
 
 @app.get(
+    "/login/opencollective",
+    response_class=RedirectResponse,
+    tags=["Authentication"],
+)
+async def opencollective_login():
+    """
+    Redirect the user to log into OpenCollective.
+
+    ***Cookie: `oc_login_state`*** Sets cookie with
+    [AEAD encrypted](https://www.pycryptodome.org/en/v3.14.1/src/cipher/modern.html#eax-mode-1)
+    state to prevent CSRF attacks during OAuth.
+    """
+    # secrets.token_url_safe equivalent
+    state = urlsafe_b64encode(get_random_bytes(16)).rstrip(b"=").decode("utf-8")
+    response = RedirectResponse(
+        OpenCollectiveOAuth.login(state),
+        status_code=status.HTTP_307_TEMPORARY_REDIRECT,
+    )
+    nonce = get_random_bytes(16)
+    cipher = AES.new(STATE_ENCRYPTION_KEY, AES.MODE_EAX, nonce)
+    ct_state, tag = cipher.encrypt_and_digest(state.encode())
+    response.set_cookie(
+        "oc_login_state",
+        value=json.dumps(
+            {
+                "nonce": b64encode(nonce).decode("utf-8"),
+                "state": b64encode(ct_state).decode("utf-8"),
+                "tag": b64encode(tag).decode("utf-8"),
+            }
+        ),
+        httponly=True,
+    )
+    return response
+
+
+@app.get(
     "/logout",
     tags=["Authentication"],
     responses={
@@ -142,7 +168,7 @@ async def logout(request: Request):
 
 
 @app.get(
-    "/oauth/token",
+    "/oauth/gh_token",
     tags=["Authentication"],
     responses={
         status.HTTP_307_TEMPORARY_REDIRECT: {"description": "Redirect to referer"},
@@ -181,7 +207,7 @@ async def access_token_from_authorization_code_flow(
     redirect_uri = request.headers.get("referer")
     if not redirect_uri:
         redirect_uri = str(request.base_url)
-    access_token = await GithubOAuth.get_access_token(code, redirect_uri)
+    access_token = await GithubOAuth.get_access_token(code)
     response = RedirectResponse(url=redirect_uri, status_code=status.HTTP_303_SEE_OTHER)
     response.delete_cookie("gh_login_state")
 
@@ -194,4 +220,53 @@ async def access_token_from_authorization_code_flow(
         "username": user.github_username,
     })
     await insert_user_or_update_auth_token(user)
+    return response
+
+
+@app.get(
+    "/oauth/oc_token",
+    tags=["Authentication"],
+    responses={
+        status.HTTP_307_TEMPORARY_REDIRECT: {"description": "Redirect to referer"},
+        status.HTTP_401_UNAUTHORIZED: {"model": HTTPError},
+    },
+    status_code=status.HTTP_307_TEMPORARY_REDIRECT,
+)
+async def access_token_from_authorization_code_flow(
+        request: Request, code: str, state: str
+):
+    """
+    This is the reply from the user logging in to OpenCollective. The request contains the login
+    code from the OAuth authorizationCode flow and should contain the same state from
+    the `oc_login_state` cookie.
+    """
+    state_error = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Authorization check failed due to potential CSRF attack.",
+    )
+    try:
+        cookie_state = json.loads(request.cookies.get("oc_login_state"))
+        cipher = AES.new(
+            STATE_ENCRYPTION_KEY,
+            AES.MODE_EAX,
+            nonce=b64decode(cookie_state.get("nonce")),
+        )
+        pt_state = cipher.decrypt_and_verify(
+            b64decode(cookie_state.get("state")), b64decode(cookie_state.get("tag"))
+        ).decode("utf-8")
+        if state != pt_state:
+            raise state_error
+    except (ValueError, KeyError):
+        raise state_error
+    # if the redirect url doesn't match the registered callback URL, OpenCollective will return 400
+    # unhandled exception redirect_uri_mismatch
+    redirect_uri = request.headers.get("referer")
+    if not redirect_uri:
+        redirect_uri = str(request.base_url)
+    access_token = await OpenCollectiveOAuth.get_access_token(code)
+    response = RedirectResponse(url=redirect_uri, status_code=status.HTTP_303_SEE_OTHER)
+    response.delete_cookie("oc_login_state")
+    opencollective_id = await OpenCollectiveOAuth.verify_user_auth_token(access_token)
+    # add opencollective_id to database
+    # await add_opencollective_id_to_user(user)
     return response

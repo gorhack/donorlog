@@ -42,14 +42,16 @@ application will do the following:
 - direnv and update `secrets` file with updated OAuth client IDs and secrets
 - docker-compose for Postgres database
 - Register a new [Github OAuth application](https://github.com/settings/applications/new)
-    - Callback URL is `/oauth/token`
-    - Add respective client IDs and secrets from `.envrc` to your `secrets` file
-    - Create a JWT secret (how to in `.envrc` file)
-- View `/docs` for swagger documentation.
+  - Callback URL is `.../oauth/gh_token`
+- Register a new [OpenCollective OAuth application](https://docs.opencollective.com/help/developers/oauth)
+  - Callback URL is `.../oauth/oc_token`
+- Add respective client IDs and secrets from `.envrc` to your `secrets` file
+- View `/docs` for swagger documentation
 
 ### Running
 
 - `pip install -r requirements.txt`
+- `docker-compose up -d`
 - `uvicorn app.main:app`
 
 ### Testing
