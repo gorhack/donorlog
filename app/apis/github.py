@@ -23,13 +23,13 @@ class GithubOAuth:
         return settings.GITHUB_LOGIN_URL + params
 
     @staticmethod
-    async def get_access_token(code: str, redirect_uri: str):
+    async def get_access_token(code: str):
         try:
             params = {
                 "client_id": settings.GITHUB_CLIENT_ID,
                 "client_secret": settings.GITHUB_CLIENT_SECRET,
                 "code": code,
-                "redirect_uri": redirect_uri,
+                "redirect_uri": settings.GITHUB_REDIRECT_URL,
             }
             headers = {"Accept": "application/json"}
             async with httpx.AsyncClient() as client:
@@ -71,7 +71,7 @@ class GithubOAuth:
     @staticmethod
     async def get_user_monthly_sponsorship_amount(access_token, username) -> int:
         # TODO totalRecurringMonthlyPriceInCents does not include one-time sponshorships
-        # fmt: off
+        # @formatter:off
         query = (
             "query {"
                 f'user(login: "{username}") {{'
@@ -81,7 +81,7 @@ class GithubOAuth:
                 "}"
             "}"
         )
-        # fmt: on
+        # @formatter:on
         try:
             async with httpx.AsyncClient() as client:
                 r = await client.post(
@@ -100,7 +100,7 @@ class GithubOAuth:
 
     @staticmethod
     async def get_user_total_sponsorship_amount(access_token, username) -> int:
-        # fmt: off
+        # @formatter:off
         query = (
             "query {"
                 f'user(login: "{username}") {{'
@@ -108,7 +108,7 @@ class GithubOAuth:
                 "}"
             "}"
         )
-        # fmt: on
+        # @formatter:on
         try:
             async with httpx.AsyncClient() as client:
                 r = await client.post(
