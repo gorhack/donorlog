@@ -1,3 +1,4 @@
+from datetime import datetime
 from urllib.parse import urlencode
 
 import httpx
@@ -66,6 +67,38 @@ class OpenCollectiveOAuth:
                     raise auth_error
         except httpx.HTTPError:
             raise auth_error
+
+    @staticmethod
+    async def get_user_monthly_sponsorship_amount(opencollective_user_id) -> int:
+        # TODO: Currency differences
+        if not opencollective_user_id:
+            return -1
+        start_of_month = datetime.today().strftime("%G-%m-01T00:00:01Z")
+        # @formatter:off
+        query = (
+            "query {"
+                f"individual(id: \"{opencollective_user_id}\") {{"
+                    "stats {"
+                        f"totalAmountSpent(net: true, kind: CONTRIBUTION, dateFrom: \"{start_of_month}\") {{"
+                            "valueInCents"
+                        "}"
+                    "}"
+                "}"
+            "}"
+        )
+        # @formatter:on
+        try:
+            async with httpx.AsyncClient() as client:
+                r = await client.post(settings.OPENCOLLECTIVE_GRAPHQL_API_URL,
+                                      headers={"content-type": "application/json"},
+                                      json={"query": query})
+                status_code = r.status_code
+                if status_code == 200:
+                    return abs(r.json()["data"]["individual"]["stats"]["totalAmountSpent"]["valueInCents"])
+                else:
+                    return -1
+        except (httpx.HTTPError, KeyError):
+            return -1
 
 
 """
