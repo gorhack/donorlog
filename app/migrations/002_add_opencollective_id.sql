@@ -1,0 +1,1 @@
+ALTER TABLE users ADD COLUMN opencollective_id varchar(255) UNIQUE;

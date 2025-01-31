@@ -58,7 +58,7 @@ class OpenCollectiveOAuth:
                 r = await client.post(settings.OPENCOLLECTIVE_GRAPHQL_API_URL,
                                       headers={"authorization": "Bearer " + opencollective_auth_token,
                                                "content-type": "application/json"},
-                                      json={"query": "query { loggedInAccount { id } }"})
+                                      json={"query": "query { me { id } }"})
                 status_code = r.status_code
                 if status_code == 200:
                     return r.json()["data"]["me"]["id"]

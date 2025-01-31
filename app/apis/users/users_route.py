@@ -46,4 +46,5 @@ async def search_overview(github_username: str):
     return {
         "github_username": f"{github_username}",
         "github_monthly_sponsorship_amount": int(github_monthly_sponsorship_amount),
+        "opencollective_linked": True if user.opencollective_id else False,
     }
