@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, status
 
 from app.apis.github import GithubOAuth
+from app.apis.opencollective import OpenCollectiveOAuth
 from app.apis.users import users_schema
 from app.apis.users.users_model import lookup_by_github_username
 from app.apis.users.users_schema import DisplayUser
@@ -38,6 +39,9 @@ async def search_overview(github_username: str):
         github_monthly_sponsorship_amount = await (
             GithubOAuth.get_user_monthly_sponsorship_amount(user.github_auth_token, github_username)
         )
+        opencollective_monthly_sponsorship_amount = await (
+            OpenCollectiveOAuth.get_user_monthly_sponsorship_amount(user.opencollective_id)
+        )
     except HTTPException:
         raise HTTPException(  # user's stored auth token is invalid
             status_code=status.HTTP_404_NOT_FOUND,
@@ -46,5 +50,7 @@ async def search_overview(github_username: str):
     return {
         "github_username": f"{github_username}",
         "github_monthly_sponsorship_amount": int(github_monthly_sponsorship_amount),
-        "opencollective_linked": True if user.opencollective_id else False,
+        "opencollective_user": {
+            "opencollective_monthly_sponsorship_amount": int(opencollective_monthly_sponsorship_amount)
+        } if user.opencollective_id else None,
     }
