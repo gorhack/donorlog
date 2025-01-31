@@ -13,7 +13,8 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app.apis.github import GithubOAuth
 from app.apis.opencollective import OpenCollectiveOAuth
-from app.apis.users.users_model import insert_user_or_update_auth_token, lookup_by_github_username
+from app.apis.users.users_model import insert_user_or_update_auth_token, lookup_by_github_username, \
+    add_opencollective_id_to_user
 from app.apis.users.users_route import users_router
 from app.apis.utils import HTTPError
 from app.core import migrate
@@ -54,6 +55,7 @@ async def root(
         is_valid_session: bool = Depends(validate_session),
 ):
     github_username = None
+    opencollective_user = False
     monthly_donation_amount = None
     total_donation_amount = None
     if is_valid_session:
@@ -69,12 +71,13 @@ async def root(
             total_donation_amount = await GithubOAuth.get_user_total_sponsorship_amount(
                 access_token=user.github_auth_token,
                 username=github_username)
+            opencollective_user = user.opencollective_id
     return templates.TemplateResponse(
         request=request,
         name="index.html",
         context={
             "github_username": github_username,
-            "opencollective_username": None,
+            "opencollective": True if opencollective_user else False,
             "monthly_donation_amount": f'{monthly_donation_amount / 100:,.2f}' if monthly_donation_amount else None,
             "total_donation_amount": f'{total_donation_amount / 100:,.2f}' if total_donation_amount else None,
             "request": request,
@@ -268,5 +271,6 @@ async def access_token_from_authorization_code_flow(
     response.delete_cookie("oc_login_state")
     opencollective_id = await OpenCollectiveOAuth.verify_user_auth_token(access_token)
     # add opencollective_id to database
-    # await add_opencollective_id_to_user(user)
+    github_username = request.session.get("username")
+    await add_opencollective_id_to_user(github_username, opencollective_id)
     return response

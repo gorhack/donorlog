@@ -71,6 +71,7 @@ class GithubOAuth:
     @staticmethod
     async def get_user_monthly_sponsorship_amount(access_token, username) -> int:
         # TODO totalRecurringMonthlyPriceInCents does not include one-time sponshorships
+        # TODO should handle failure more gracefully than returning a 401
         # @formatter:off
         query = (
             "query {"

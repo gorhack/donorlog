@@ -1,5 +1,5 @@
 from datetime import datetime, timezone, timedelta
-from unittest.mock import patch, PropertyMock
+from unittest.mock import patch, PropertyMock, AsyncMock
 
 import pytest
 from httpx import AsyncClient, ASGITransport
@@ -33,7 +33,7 @@ async def async_client():
 
 
 @pytest.fixture
-async def async_client_with_user(async_client):
+async def async_client_with_github_user(async_client):
     async with database.pool.acquire() as connection:
         await connection.execute("INSERT INTO users (email, github_username, github_auth_token) VALUES ($1, $2, $3)",
                                  "kyle@example.com", "gorhack", "test_access_token")
@@ -45,6 +45,14 @@ async def async_client_with_user(async_client):
         "username": "gorhack"
     }):
         yield async_client  # schema is going to be dropped after test ends
+
+
+@pytest.fixture
+async def async_client_with_opencollective_user(async_client_with_github_user):
+    async with database.pool.acquire() as connection:
+        await connection.execute("UPDATE users SET opencollective_id = $1 WHERE github_username = $2",
+                                 "opencollective_test_id", "gorhack")
+    yield async_client_with_github_user
 
 
 class TestHome:
@@ -60,8 +68,8 @@ class TestHome:
     @patch.object(GithubOAuth, "get_user_total_sponsorship_amount", return_value=1337)
     async def test_get_home_database_authenticated(self, mock_get_user_monthly_sponsorship_amount,
                                                    mock_get_user_total_sponsorship_amount,
-                                                   async_client_with_user):
-        response = await async_client_with_user.get("/")
+                                                   async_client_with_github_user):
+        response = await async_client_with_github_user.get("/")
         assert response.status_code == 200
         assert """<p>GitHub username: gorhack</p>""" in response.text
         mock_get_user_monthly_sponsorship_amount.assert_called_once_with(
@@ -72,3 +80,16 @@ class TestHome:
             access_token="test_access_token",
             username="gorhack"
         )
+
+    @patch.multiple(GithubOAuth,
+                    get_user_monthly_sponsorship_amount=AsyncMock(return_value=10),
+                    get_user_total_sponsorship_amount=AsyncMock(return_value=1337))
+    # @patch.object(OpenCollectiveOAuth, "get_user_total_sponsorship_amount", return_value=4000)
+    async def test_get_home_database_authenticated_with_opencollective(self,
+                                                                       async_client_with_opencollective_user):
+        response = await async_client_with_opencollective_user.get("/")
+        assert response.status_code == 200
+        assert """<p>OpenCollective</p>""" in response.text
+        # mock_get_user_total_sponsorship_amount.assert_called_once_with(
+        #     opencollective_id="test_opencollective_id",
+        # )
