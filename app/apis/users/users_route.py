@@ -39,18 +39,15 @@ async def search_overview(github_username: str):
         github_monthly_sponsorship_amount = await (
             GithubOAuth.get_user_monthly_sponsorship_amount(user.github_auth_token, github_username)
         )
-        opencollective_monthly_sponsorship_amount = await (
-            OpenCollectiveOAuth.get_user_monthly_sponsorship_amount(user.opencollective_id)
+        opencollective_sponsorship_amount = await (
+            OpenCollectiveOAuth.get_user_sponsorship_amount(user.opencollective_id)
         )
     except HTTPException:
         raise HTTPException(  # user's stored auth token is invalid
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User does not exist or not verified.",
         )
-    return {
-        "github_username": f"{github_username}",
-        "github_monthly_sponsorship_amount": int(github_monthly_sponsorship_amount),
-        "opencollective_user": {
-            "opencollective_monthly_sponsorship_amount": int(opencollective_monthly_sponsorship_amount)
-        } if user.opencollective_id else None,
-    }
+    return DisplayUser(
+        github_username=github_username,
+        github_monthly_sponsorship_amount=int(github_monthly_sponsorship_amount),
+        opencollective=opencollective_sponsorship_amount)
