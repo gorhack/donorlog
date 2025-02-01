@@ -14,5 +14,5 @@ class User(BaseModel):
 
 class DisplayUser(BaseModel):
     github_username: str
-    github_monthly_sponsorship_amount: int
+    github: TotalAndMonthAmount
     opencollective: Optional[TotalAndMonthAmount] = None

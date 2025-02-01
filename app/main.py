@@ -56,8 +56,7 @@ async def root(
 ):
     github_username = None
     opencollective_user = False
-    monthly_donation_amount = None
-    total_donation_amount = None
+    github_amount = None
     if is_valid_session:
         # lookup user
         github_username = request.session.get("username")
@@ -65,12 +64,7 @@ async def root(
         # TODO check if auth token is still valid
         if user:
             github_username = user.github_username
-            monthly_donation_amount = await GithubOAuth.get_user_monthly_sponsorship_amount(
-                access_token=user.github_auth_token,
-                username=github_username)
-            total_donation_amount = await GithubOAuth.get_user_total_sponsorship_amount(
-                access_token=user.github_auth_token,
-                username=github_username)
+            github_amount = await GithubOAuth.get_user_sponsorship_amount(access_token=user.github_auth_token)
             opencollective_user = user.opencollective_id
     return templates.TemplateResponse(
         request=request,
@@ -78,8 +72,8 @@ async def root(
         context={
             "github_username": github_username,
             "opencollective": True if opencollective_user else False,
-            "monthly_donation_amount": f'{monthly_donation_amount / 100:,.2f}' if monthly_donation_amount else None,
-            "total_donation_amount": f'{total_donation_amount / 100:,.2f}' if total_donation_amount else None,
+            "monthly_donation_amount": f'{github_amount.month / 100:,.2f}' if github_amount else None,
+            "total_donation_amount": f'{github_amount.total / 100:,.2f}' if github_amount else None,
             "request": request,
         },
     )

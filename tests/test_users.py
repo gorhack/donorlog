@@ -6,19 +6,24 @@ from fastapi import status
 from app.apis.github import GithubOAuth
 from app.apis.opencollective import OpenCollectiveOAuth
 from app.apis.utils import TotalAndMonthAmount
-from tests.test_main import async_client_with_github_user, async_client, async_client_with_opencollective_user
+from tests.test_main import async_client_with_github_user, async_client, async_client_with_opencollective_user, \
+    GITHUB_TOTAL_AND_MONTH
 
 
 class TestGithubUsers:
     @patch.multiple(GithubOAuth,
                     verify_user_auth_token=AsyncMock(return_value=True),
-                    get_user_monthly_sponsorship_amount=AsyncMock(return_value=42))
+                    get_user_sponsorship_amount=AsyncMock(return_value=GITHUB_TOTAL_AND_MONTH))
     async def test_get_github_user(self, async_client_with_github_user):
         response = await async_client_with_github_user.get("/users/gorhack")
         assert response.status_code == status.HTTP_200_OK
         assert response.json() == {
             "github_username": "gorhack",
-            "github_monthly_sponsorship_amount": 42,
+            "github": {
+                "last_checked": "2024-12-15T12:55:00Z",
+                "month": 11,
+                "total": 55,
+            },
             "opencollective": None
         }
 
@@ -29,7 +34,7 @@ class TestGithubUsers:
 
     @patch.multiple(GithubOAuth,
                     verify_user_auth_token=AsyncMock(return_value=True),
-                    get_user_monthly_sponsorship_amount=AsyncMock(return_value=42))
+                    get_user_sponsorship_amount=AsyncMock(return_value=GITHUB_TOTAL_AND_MONTH))
     @patch.object(OpenCollectiveOAuth, "get_user_sponsorship_amount", return_value=TotalAndMonthAmount(
         month=10, total=42, last_checked=datetime.fromisoformat("2025-01-01T12:55:00Z")
     ))
@@ -40,7 +45,11 @@ class TestGithubUsers:
         assert response.status_code == status.HTTP_200_OK
         assert response.json() == {
             "github_username": "gorhack",
-            "github_monthly_sponsorship_amount": 42,
+            "github": {
+                "last_checked": "2024-12-15T12:55:00Z",
+                "month": 11,
+                "total": 55,
+            },
             "opencollective": {
                 "last_checked": "2025-01-01T12:55:00Z",
                 "month": 10,
