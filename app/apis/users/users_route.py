@@ -37,7 +37,7 @@ async def search_overview(github_username: str):
         )
     try:
         github_monthly_sponsorship_amount = await (
-            GithubOAuth.get_user_monthly_sponsorship_amount(user.github_auth_token, github_username)
+            GithubOAuth.get_user_sponsorship_amount(user.github_auth_token)
         )
         opencollective_sponsorship_amount = await (
             OpenCollectiveOAuth.get_user_sponsorship_amount(user.opencollective_id)
@@ -49,5 +49,5 @@ async def search_overview(github_username: str):
         )
     return DisplayUser(
         github_username=github_username,
-        github_monthly_sponsorship_amount=int(github_monthly_sponsorship_amount),
+        github=github_monthly_sponsorship_amount,
         opencollective=opencollective_sponsorship_amount)
