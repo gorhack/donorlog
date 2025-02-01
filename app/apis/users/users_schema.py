@@ -2,6 +2,8 @@ from typing import Optional
 
 from pydantic import BaseModel
 
+from app.apis.utils import TotalAndMonthAmount
+
 
 class User(BaseModel):
     email: str
@@ -10,11 +12,7 @@ class User(BaseModel):
     opencollective_id: Optional[str] = None
 
 
-class DisplayOpenCollectiveUser(BaseModel):
-    opencollective_monthly_sponsorship_amount: int
-
-
 class DisplayUser(BaseModel):
     github_username: str
     github_monthly_sponsorship_amount: int
-    opencollective_user: Optional[DisplayOpenCollectiveUser] = None
+    opencollective: Optional[TotalAndMonthAmount] = None

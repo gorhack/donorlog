@@ -215,6 +215,7 @@ async def access_token_from_authorization_code_flow(
     response.delete_cookie("gh_login_state")
 
     # session setup
+    # TODO: Handle 401 from get_user_details
     user = await GithubOAuth.get_user_details(access_token)
     user.github_auth_token = access_token
     request.session.update({

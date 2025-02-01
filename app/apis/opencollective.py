@@ -1,9 +1,11 @@
-from datetime import datetime
+from datetime import datetime, timezone
+from typing import Optional
 from urllib.parse import urlencode
 
 import httpx
 from fastapi import HTTPException, status
 
+from app.apis.utils import TotalAndMonthAmount
 from app.core.config import settings
 
 
@@ -69,17 +71,20 @@ class OpenCollectiveOAuth:
             raise auth_error
 
     @staticmethod
-    async def get_user_monthly_sponsorship_amount(opencollective_user_id) -> int:
+    async def get_user_sponsorship_amount(opencollective_user_id: str) -> Optional[TotalAndMonthAmount]:
         # TODO: Currency differences
         if not opencollective_user_id:
-            return -1
+            return None
         start_of_month = datetime.today().strftime("%G-%m-01T00:00:01Z")
         # @formatter:off
         query = (
             "query {"
                 f"individual(id: \"{opencollective_user_id}\") {{"
                     "stats {"
-                        f"totalAmountSpent(net: true, kind: CONTRIBUTION, dateFrom: \"{start_of_month}\") {{"
+                        f"monthContribution: totalAmountSpent(net: true, kind: CONTRIBUTION, dateFrom: \"{start_of_month}\") {{"
+                            "valueInCents"
+                        "}"
+                        f"totalContribution: totalAmountSpent(net: true, kind: CONTRIBUTION, dateFrom: \"1970-01-01T00:00:01Z\") {{"
                             "valueInCents"
                         "}"
                     "}"
@@ -94,11 +99,17 @@ class OpenCollectiveOAuth:
                                       json={"query": query})
                 status_code = r.status_code
                 if status_code == 200:
-                    return abs(r.json()["data"]["individual"]["stats"]["totalAmountSpent"]["valueInCents"])
+                    month_contribution = abs(r.json()["data"]["stats"]["monthContribution"]["valueInCents"])
+                    total_contribution = abs(r.json()["data"]["stats"]["totalContribution"]["valueInCents"])
+                    return TotalAndMonthAmount(
+                        month=month_contribution,
+                        total=total_contribution,
+                        last_checked=datetime.now(tz=timezone.utc)
+                    )
                 else:
-                    return -1
+                    return None
         except (httpx.HTTPError, KeyError):
-            return -1
+            return None
 
 
 """

@@ -148,3 +148,12 @@ class GithubOAuth:
                     raise auth_error
         except httpx.HTTPError:
             raise auth_error
+
+# query = (
+#     "query {"
+#         "viewer {{"
+#             "total: totalSponsorshipAmountAsSponsorInCents(since: \"1970-01-01T12:00:00\")"
+#             "month: totalSponsorshipAmountAsSponsorInCents(since: \"2025-01-01T12:00:00\")"
+#         "}"
+#     "}"
+# )
