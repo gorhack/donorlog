@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, status
 
 from app.apis.github import GithubAPI
 from app.apis.opencollective import OpenCollectiveAPI
-from app.apis.users.users_model import lookup_by_github_username
+from app.apis.users.users_model import UsersModel
 from app.apis.users.users_schema import DisplayUser
 
 users_router = APIRouter(prefix="/users", tags=["User API"])
@@ -17,7 +17,7 @@ async def search_overview(github_username: str):
     Search for arbitrary user.
     If the user exists in the application, return their sponsorship amounts.
     """
-    user = await lookup_by_github_username(github_username)
+    user = await UsersModel.lookup_by_github_username(github_username)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

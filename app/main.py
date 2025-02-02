@@ -13,8 +13,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app.apis.github import GithubAPI
 from app.apis.opencollective import OpenCollectiveAPI
-from app.apis.users.users_model import insert_user_or_update_auth_token, lookup_by_github_username, \
-    add_opencollective_id_to_user
+from app.apis.users.users_model import UsersModel
 from app.apis.users.users_route import users_router
 from app.apis.users.users_schema import User
 from app.apis.utils import HTTPError
@@ -61,7 +60,7 @@ async def root(
     if is_valid_session:
         # lookup user
         github_username = request.session.get("username")
-        user = await lookup_by_github_username(github_username)
+        user = await UsersModel.lookup_by_github_username(github_username)
         # TODO check if auth token is still valid
         if user:
             github_username = user.github_username
@@ -217,7 +216,7 @@ async def access_token_from_authorization_code_flow(
         "token_expiry": ((datetime.now(timezone.utc) + timedelta(minutes=15)).replace(tzinfo=timezone.utc).timestamp()),
         "username": gh_username,
     })
-    await insert_user_or_update_auth_token(User(github_username=gh_username, github_auth_token=access_token))
+    await UsersModel.insert_user_or_update_auth_token(User(github_username=gh_username, github_auth_token=access_token))
     return response
 
 
@@ -267,5 +266,5 @@ async def access_token_from_authorization_code_flow(
     (oc_id, _) = await OpenCollectiveAPI.get_id_and_username(access_token)
     # add opencollective_id to database
     github_username = request.session.get("username")
-    await add_opencollective_id_to_user(github_username, oc_id)
+    await UsersModel.add_opencollective_id_to_user(github_username, oc_id)
     return response
