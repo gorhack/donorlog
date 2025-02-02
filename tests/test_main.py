@@ -4,7 +4,7 @@ from unittest.mock import patch, PropertyMock
 import pytest
 from httpx import AsyncClient, ASGITransport
 
-from app.apis.github import GithubOAuth
+from app.apis.github import GithubAPI
 from app.apis.utils import TotalAndMonthAmount
 from app.core import migrate
 from app.core.postgres import database
@@ -35,9 +35,10 @@ async def async_client():
 
 @pytest.fixture
 async def async_client_with_github_user(async_client):
+    # TODO remove email from db
     async with database.pool.acquire() as connection:
-        await connection.execute("INSERT INTO users (email, github_username, github_auth_token) VALUES ($1, $2, $3)",
-                                 "kyle@example.com", "gorhack", "test_access_token")
+        await connection.execute("INSERT INTO users (github_username, github_auth_token) VALUES ($1, $2)",
+                                 "gorhack", "test_access_token")
     with patch("fastapi.Request.session", new_callable=PropertyMock, return_value={
         "session_id": "test_session_id",
         "token_expiry": (
@@ -72,7 +73,7 @@ class TestHome:
             response.content
         )
 
-    @patch.object(GithubOAuth, "get_user_sponsorship_amount", return_value=GITHUB_TOTAL_AND_MONTH)
+    @patch.object(GithubAPI, "get_user_sponsorship_amount", return_value=GITHUB_TOTAL_AND_MONTH)
     async def test_get_home_database_authenticated(self, mock_get_user_sponsorship_amount,
                                                    async_client_with_github_user):
         response = await async_client_with_github_user.get("/")
@@ -82,7 +83,7 @@ class TestHome:
             access_token="test_access_token",
         )
 
-    @patch.object(GithubOAuth, "get_user_sponsorship_amount", return_value=GITHUB_TOTAL_AND_MONTH)
+    @patch.object(GithubAPI, "get_user_sponsorship_amount", return_value=GITHUB_TOTAL_AND_MONTH)
     # @patch.object(OpenCollectiveOAuth, "get_user_total_sponsorship_amount", return_value=4000)
     async def test_get_home_database_authenticated_with_opencollective(self, _, async_client_with_opencollective_user):
         response = await async_client_with_opencollective_user.get("/")

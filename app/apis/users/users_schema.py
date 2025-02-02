@@ -6,7 +6,6 @@ from app.apis.utils import TotalAndMonthAmount
 
 
 class User(BaseModel):
-    email: str
     github_username: str
     github_auth_token: str
     opencollective_id: Optional[str] = None

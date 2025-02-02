@@ -3,88 +3,86 @@ from typing import Optional
 from urllib.parse import urlencode
 
 import httpx
-from fastapi import HTTPException, status
+from fastapi import status
 
+from app.apis.oauth import OAuth, start_of_month
 from app.apis.utils import TotalAndMonthAmount
 from app.core.config import settings
 
 
-class OpenCollectiveOAuth:
+class OpenCollectiveAPI(OAuth):
     @staticmethod
-    def login(state: str):
-        params = {
+    def login(state: str) -> str:
+        if not state:
+            raise TypeError("state is required")
+        params: dict[str, str] = {
             "client_id": settings.OPENCOLLECTIVE_CLIENT_ID,
-            "response_type": "code",
             "redirect_uri": settings.OPENCOLLECTIVE_REDIRECT_URL,
+            "response_type": "code",
             "scope": "",
             "state": state,
         }
-        params = urlencode(params)
-        return settings.OPENCOLLECTIVE_LOGIN_URL + params
+        return settings.OPENCOLLECTIVE_LOGIN_URL + urlencode(params)
 
     @staticmethod
-    async def get_access_token(code: str):
-        try:
-            params = {
-                "grant_type": "authorization_code",
-                "client_id": settings.OPENCOLLECTIVE_CLIENT_ID,
-                "client_secret": settings.OPENCOLLECTIVE_CLIENT_SECRET,
-                "code": code,
-                "redirect_uri": settings.OPENCOLLECTIVE_REDIRECT_URL,
-            }
-            async with httpx.AsyncClient() as client:
-                r = await client.post(
-                    settings.OPENCOLLECTIVE_ACCESS_TOKEN_URL, data=params
-                )
-                if r.status_code == 200:
-                    return r.json().get("access_token")
-                else:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"Unhandled exception authenticating with OpenCollective: {r.content.decode('utf-8')}",
-                    )
-        except httpx.HTTPError:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Error while trying to retrieve user access token",
+    async def get_access_token(code: str) -> str:
+        if not code:
+            raise TypeError("code is required")
+        params = {
+            "grant_type": "authorization_code",
+            "client_id": settings.OPENCOLLECTIVE_CLIENT_ID,
+            "client_secret": settings.OPENCOLLECTIVE_CLIENT_SECRET,
+            "code": code,
+            "redirect_uri": settings.OPENCOLLECTIVE_REDIRECT_URL,
+        }
+        async with httpx.AsyncClient() as client:
+            r = await client.post(
+                settings.OPENCOLLECTIVE_ACCESS_TOKEN_URL, data=params
             )
+            if r.status_code == status.HTTP_200_OK and not r.json().get("error"):
+                return r.json().get("access_token")
+            else:
+                raise httpx.HTTPError(r.text)
 
     @staticmethod
-    async def verify_user_auth_token(opencollective_auth_token):
-        auth_error = HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-        try:
-            async with httpx.AsyncClient() as client:
-                r = await client.post(settings.OPENCOLLECTIVE_GRAPHQL_API_URL,
-                                      headers={"authorization": "Bearer " + opencollective_auth_token,
-                                               "content-type": "application/json"},
-                                      json={"query": "query { me { id } }"})
-                status_code = r.status_code
-                if status_code == 200:
-                    return r.json()["data"]["me"]["id"]
-                else:
-                    raise auth_error
-        except httpx.HTTPError:
-            raise auth_error
-
-    @staticmethod
-    async def get_user_sponsorship_amount(opencollective_user_id: str) -> Optional[TotalAndMonthAmount]:
-        # TODO: Currency differences
-        if not opencollective_user_id:
-            return None
-        start_of_month = datetime.today().strftime("%G-%m-01T00:00:01Z")
+    async def get_id_and_username(access_token: str) -> (str, str):
+        if not access_token:
+            raise TypeError("access_token cannot be empty")
         # @formatter:off
         query = (
             "query {"
-                f"individual(id: \"{opencollective_user_id}\") {{"
+                "user: me {"
+                    "id\n"
+                    "username: slug"
+                "}"
+            "}"
+        )
+        # @formatter:on
+        headers = {"authorization": "Bearer " + access_token}
+        async with httpx.AsyncClient() as client:
+            r = await client.post(settings.OPENCOLLECTIVE_GRAPHQL_API_URL, headers=headers, json={"query": query})
+            if r.status_code == status.HTTP_200_OK and not r.json().get("errors"):
+                return (
+                    r.json().get("data").get("user").get("id"),
+                    r.json().get("data").get("user").get("username")
+                )
+            else:
+                raise httpx.HTTPError(r.text)
+
+    @staticmethod
+    async def get_user_sponsorship_amount(user_id: str) -> Optional[TotalAndMonthAmount]:
+        if not user_id:
+            return None
+        # TODO: Currency differences
+        # @formatter:off
+        query = (
+            "query {"
+                f"individual(id: \"{user_id}\") {{"
                     "stats {"
-                        f"monthContribution: totalAmountSpent(net: true, kind: CONTRIBUTION, dateFrom: \"{start_of_month}\") {{"
+                        f"month: totalAmountSpent(net: true, kind: CONTRIBUTION, dateFrom: \"{start_of_month()}\") {{"
                             "valueInCents"
                         "}"
-                        f"totalContribution: totalAmountSpent(net: true, kind: CONTRIBUTION, dateFrom: \"1970-01-01T00:00:01Z\") {{"
+                        f"total: totalAmountSpent(net: true, kind: CONTRIBUTION) {{"
                             "valueInCents"
                         "}"
                     "}"
@@ -92,42 +90,16 @@ class OpenCollectiveOAuth:
             "}"
         )
         # @formatter:on
-        try:
-            async with httpx.AsyncClient() as client:
-                r = await client.post(settings.OPENCOLLECTIVE_GRAPHQL_API_URL,
-                                      headers={"content-type": "application/json"},
-                                      json={"query": query})
-                status_code = r.status_code
-                if status_code == 200:
-                    month_contribution = abs(r.json()["data"]["stats"]["monthContribution"]["valueInCents"])
-                    total_contribution = abs(r.json()["data"]["stats"]["totalContribution"]["valueInCents"])
-                    return TotalAndMonthAmount(
-                        month=month_contribution,
-                        total=total_contribution,
-                        last_checked=datetime.now(tz=timezone.utc)
-                    )
-                else:
-                    return None
-        except (httpx.HTTPError, KeyError):
-            return None
-
-
-"""
-GraphQL:
-individual(id: "{id}" {
-    monthly: stats {
-        totalAmountSpent(net: true, kind: CONTRIBUTION, dateFrom: "2025-01-01T00:00:01Z") {
-            value
-            currency
-            valueInCents
-        }
-    }
-    total: stats {
-        totalAmountSpent(net: true, kind: CONTRIBUTION) {
-            value
-            currency
-            valueInCents
-        }
-    }
-}
-"""
+        headers = {"content-type": "application/json"}
+        async with httpx.AsyncClient() as client:
+            r = await client.post(settings.OPENCOLLECTIVE_GRAPHQL_API_URL, headers=headers, json={"query": query})
+            if r.status_code == status.HTTP_200_OK and not r.json().get("errors"):
+                month = abs(r.json().get("data").get("individual").get("stats").get("month").get("valueInCents"))
+                total = abs(r.json().get("data").get("individual").get("stats").get("total").get("valueInCents"))
+                return TotalAndMonthAmount(
+                    month=month,
+                    total=total,
+                    last_checked=datetime.now(tz=timezone.utc)
+                )
+            else:
+                raise httpx.HTTPError(r.text)

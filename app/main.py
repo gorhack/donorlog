@@ -11,11 +11,12 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from app.apis.github import GithubOAuth
-from app.apis.opencollective import OpenCollectiveOAuth
+from app.apis.github import GithubAPI
+from app.apis.opencollective import OpenCollectiveAPI
 from app.apis.users.users_model import insert_user_or_update_auth_token, lookup_by_github_username, \
     add_opencollective_id_to_user
 from app.apis.users.users_route import users_router
+from app.apis.users.users_schema import User
 from app.apis.utils import HTTPError
 from app.core import migrate
 from app.core.config import settings
@@ -64,7 +65,7 @@ async def root(
         # TODO check if auth token is still valid
         if user:
             github_username = user.github_username
-            github_amount = await GithubOAuth.get_user_sponsorship_amount(access_token=user.github_auth_token)
+            github_amount = await GithubAPI.get_user_sponsorship_amount(access_token=user.github_auth_token)
             opencollective_user = user.opencollective_id
     return templates.TemplateResponse(
         request=request,
@@ -95,7 +96,7 @@ async def github_login():
     # secrets.token_url_safe equivalent
     state = urlsafe_b64encode(get_random_bytes(16)).rstrip(b"=").decode("utf-8")
     response = RedirectResponse(
-        GithubOAuth.login(state),
+        GithubAPI.login(state),
         status_code=status.HTTP_307_TEMPORARY_REDIRECT,
     )
     nonce = get_random_bytes(16)
@@ -131,7 +132,7 @@ async def opencollective_login():
     # secrets.token_url_safe equivalent
     state = urlsafe_b64encode(get_random_bytes(16)).rstrip(b"=").decode("utf-8")
     response = RedirectResponse(
-        OpenCollectiveOAuth.login(state),
+        OpenCollectiveAPI.login(state),
         status_code=status.HTTP_307_TEMPORARY_REDIRECT,
     )
     nonce = get_random_bytes(16)
@@ -204,20 +205,19 @@ async def access_token_from_authorization_code_flow(
     redirect_uri = request.headers.get("referer")
     if not redirect_uri:
         redirect_uri = str(request.base_url)
-    access_token = await GithubOAuth.get_access_token(code)
+    access_token = await GithubAPI.get_access_token(code)
     response = RedirectResponse(url=redirect_uri, status_code=status.HTTP_303_SEE_OTHER)
     response.delete_cookie("gh_login_state")
 
     # session setup
-    # TODO: Handle 401 from get_user_details
-    user = await GithubOAuth.get_user_details(access_token)
-    user.github_auth_token = access_token
+    # TODO: handle errors
+    (_, gh_username) = await GithubAPI.get_id_and_username(access_token)
     request.session.update({
         "session_id": create_random_session_string(),
         "token_expiry": ((datetime.now(timezone.utc) + timedelta(minutes=15)).replace(tzinfo=timezone.utc).timestamp()),
-        "username": user.github_username,
+        "username": gh_username,
     })
-    await insert_user_or_update_auth_token(user)
+    await insert_user_or_update_auth_token(User(github_username=gh_username, github_auth_token=access_token))
     return response
 
 
@@ -261,11 +261,11 @@ async def access_token_from_authorization_code_flow(
     redirect_uri = request.headers.get("referer")
     if not redirect_uri:
         redirect_uri = str(request.base_url)
-    access_token = await OpenCollectiveOAuth.get_access_token(code)
+    access_token = await OpenCollectiveAPI.get_access_token(code)
     response = RedirectResponse(url=redirect_uri, status_code=status.HTTP_303_SEE_OTHER)
     response.delete_cookie("oc_login_state")
-    opencollective_id = await OpenCollectiveOAuth.verify_user_auth_token(access_token)
+    (oc_id, _) = await OpenCollectiveAPI.get_id_and_username(access_token)
     # add opencollective_id to database
     github_username = request.session.get("username")
-    await add_opencollective_id_to_user(github_username, opencollective_id)
+    await add_opencollective_id_to_user(github_username, oc_id)
     return response
