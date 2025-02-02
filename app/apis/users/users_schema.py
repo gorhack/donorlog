@@ -15,3 +15,11 @@ class DisplayUser(BaseModel):
     github_username: str
     github: Optional[TotalAndMonthAmount] = None
     opencollective: Optional[TotalAndMonthAmount] = None
+
+    def total(self):
+        return (getattr(getattr(self, 'github', None), 'total', None) or 0) + (getattr(
+            getattr(self, 'opencollective', None), 'total', None) or 0)
+
+    def month(self):
+        return (getattr(getattr(self, 'github', None), 'month', None) or 0) + (getattr(
+            getattr(self, 'opencollective', None), 'month', None) or 0)
