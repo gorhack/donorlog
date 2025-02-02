@@ -27,7 +27,7 @@ class TestExternalAPI:
                   return_value=User(github_username="gorhack",
                                     github_auth_token="",
                                     opencollective_id=os.getenv("OPENCOLLECTIVE_USER_ID")))
-    async def test_github_graphql(self, _, async_client):
+    async def test_opencollective_graphql(self, _, async_client):
         response = await async_client.get("/users/gorhack")
         assert response.json().get("github_username") == "gorhack"
         assert response.json().get("github") is None

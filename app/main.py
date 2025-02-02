@@ -14,7 +14,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.apis.github import GithubAPI
 from app.apis.opencollective import OpenCollectiveAPI
 from app.apis.users.users_model import UsersModel
-from app.apis.users.users_route import users_router
+from app.apis.users.users_route import users_router, search_overview
 from app.apis.users.users_schema import User
 from app.apis.utils import HTTPError
 from app.core import migrate
@@ -54,26 +54,19 @@ async def root(
         request: Request,
         is_valid_session: bool = Depends(validate_session),
 ):
-    github_username = None
-    opencollective_user = False
-    github_amount = None
+    display_user = None
     if is_valid_session:
         # lookup user
         github_username = request.session.get("username")
         user = await UsersModel.lookup_by_github_username(github_username)
-        # TODO check if auth token is still valid
         if user:
-            github_username = user.github_username
-            github_amount = await GithubAPI.get_user_sponsorship_amount(access_token=user.github_auth_token)
-            opencollective_user = user.opencollective_id
+            # TODO handle errors
+            display_user = await search_overview("gorhack")
     return templates.TemplateResponse(
         request=request,
         name="index.html",
         context={
-            "github_username": github_username,
-            "opencollective": True if opencollective_user else False,
-            "monthly_donation_amount": f'{github_amount.month / 100:,.2f}' if github_amount else None,
-            "total_donation_amount": f'{github_amount.total / 100:,.2f}' if github_amount else None,
+            "user": display_user,
             "request": request,
         },
     )
@@ -216,7 +209,7 @@ async def access_token_from_authorization_code_flow(
         "token_expiry": ((datetime.now(timezone.utc) + timedelta(minutes=15)).replace(tzinfo=timezone.utc).timestamp()),
         "username": gh_username,
     })
-    await UsersModel.insert_user_or_update_auth_token(User(github_username=gh_username, github_auth_token=access_token))
+    await UsersModel().insert_user_or_update_auth_token(User(github_username=gh_username, github_auth_token=access_token))
     return response
 
 

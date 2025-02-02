@@ -5,6 +5,7 @@ import pytest
 from httpx import AsyncClient, ASGITransport
 
 from app.apis.github import GithubAPI
+from app.apis.opencollective import OpenCollectiveAPI
 from app.apis.utils import TotalAndMonthAmount
 from app.core import migrate
 from app.core.postgres import database
@@ -57,9 +58,9 @@ async def async_client_with_opencollective_user(async_client_with_github_user):
     yield async_client_with_github_user
 
 
-GITHUB_TOTAL_AND_MONTH = TotalAndMonthAmount(
-    month=11,
-    total=55,
+TEST_TOTAL_AND_MONTH = TotalAndMonthAmount(
+    month=1122,
+    total=3344,
     last_checked=datetime.fromisoformat("2024-12-15T12:55:00Z")
 )
 
@@ -73,22 +74,23 @@ class TestHome:
             response.content
         )
 
-    @patch.object(GithubAPI, "get_user_sponsorship_amount", return_value=GITHUB_TOTAL_AND_MONTH)
+    @patch.object(GithubAPI, "get_user_sponsorship_amount", return_value=TEST_TOTAL_AND_MONTH)
     async def test_get_home_database_authenticated(self, mock_get_user_sponsorship_amount,
                                                    async_client_with_github_user):
         response = await async_client_with_github_user.get("/")
         assert response.status_code == 200
         assert """<p>GitHub username: gorhack</p>""" in response.text
-        mock_get_user_sponsorship_amount.assert_called_once_with(
-            access_token="test_access_token",
-        )
+        mock_get_user_sponsorship_amount.assert_called_once_with("test_access_token")
+        assert """Total Amount: $33.44""" in response.text
+        assert """Monthly Amount: $11.22""" in response.text
 
-    @patch.object(GithubAPI, "get_user_sponsorship_amount", return_value=GITHUB_TOTAL_AND_MONTH)
-    # @patch.object(OpenCollectiveOAuth, "get_user_total_sponsorship_amount", return_value=4000)
-    async def test_get_home_database_authenticated_with_opencollective(self, _, async_client_with_opencollective_user):
+    @patch.object(GithubAPI, "get_user_sponsorship_amount", return_value=TEST_TOTAL_AND_MONTH)
+    @patch.object(OpenCollectiveAPI, "get_user_sponsorship_amount", return_value=TEST_TOTAL_AND_MONTH)
+    async def test_get_home_database_authenticated_with_opencollective(self, mock_get_user_sponsorship_amount, _,
+                                                                       async_client_with_opencollective_user):
         response = await async_client_with_opencollective_user.get("/")
         assert response.status_code == 200
+        mock_get_user_sponsorship_amount.assert_called_once_with("opencollective_test_id")
         assert """<p>OpenCollective</p>""" in response.text
-        # mock_get_user_total_sponsorship_amount.assert_called_once_with(
-        #     opencollective_id="test_opencollective_id",
-        # )
+        assert """Total Amount: $66.88""" in response.text
+        assert """Monthly Amount: $22.44""" in response.text
