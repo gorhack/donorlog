@@ -6,18 +6,19 @@ from fastapi import status
 from app.apis.github import GithubAPI
 from app.apis.opencollective import OpenCollectiveAPI
 from app.apis.utils import TotalAndMonthAmount
-from tests.test_main import async_client_with_github_user, async_client, async_client_with_opencollective_user, \
-    TEST_TOTAL_AND_MONTH
+from test_main import add_users_to_database, test_user_1_github, test_user_1_opencollective
+from tests.test_main import async_client, TEST_TOTAL_AND_MONTH
 
 
 class TestGithubUsers:
     @patch.object(GithubAPI, "get_user_sponsorship_amount", return_value=TEST_TOTAL_AND_MONTH)
-    async def test_get_github_user(self, mock_get_user_sponsorship_amount, async_client_with_github_user):
-        response = await async_client_with_github_user.get("/users/gorhack")
+    async def test_get_github_user(self, mock_get_user_sponsorship_amount, async_client):
+        await add_users_to_database([test_user_1_github])
+        response = await async_client.get("/users/test_user_1")
         assert response.status_code == status.HTTP_200_OK
-        mock_get_user_sponsorship_amount.assert_called_once_with("test_access_token")
+        mock_get_user_sponsorship_amount.assert_called_once_with(test_user_1_github.github_user.github_auth_token)
         assert response.json() == {
-            "github_username": "gorhack",
+            "username": "test_user_1",
             "github": {
                 "last_checked": "2024-12-15T12:55:00Z",
                 "month": 1122,
@@ -36,12 +37,13 @@ class TestGithubUsers:
         month=10, total=42, last_checked=datetime.fromisoformat("2025-01-01T12:55:00Z")
     ))
     async def test_with_opencollective(self, mock_oc_get_user_sponsorship_amount, _,
-                                       async_client_with_opencollective_user):
-        response = await async_client_with_opencollective_user.get("/users/gorhack")
-        mock_oc_get_user_sponsorship_amount.assert_called_once_with("opencollective_test_id")
+                                       async_client):
+        await add_users_to_database([test_user_1_github, test_user_1_opencollective])
+        response = await async_client.get("/users/test_user_1")
+        mock_oc_get_user_sponsorship_amount.assert_called_once_with("oc_id_1")
         assert response.status_code == status.HTTP_200_OK
         assert response.json() == {
-            "github_username": "gorhack",
+            "username": "test_user_1",
             "github": {
                 "last_checked": "2024-12-15T12:55:00Z",
                 "month": 1122,

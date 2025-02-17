@@ -10,7 +10,7 @@
     <input type="submit" value="Login with Github"/>
 </form>
 {% else %}
-<p>GitHub username: {{ user.github_username }}</p>
+<p>Username: {{ user.username }}</p>
 <p>Monthly Amount: ${{ "%.2f" % (user.month() / 100) }}</p>
 <p>Total Amount: ${{ "%.2f" % (user.total() / 100) }}</p>
 {% if not user.opencollective %}
