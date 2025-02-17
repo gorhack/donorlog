@@ -8,7 +8,7 @@ from httpx import AsyncClient, ASGITransport
 from app.apis.github import GithubAPI
 from app.apis.opencollective import OpenCollectiveAPI
 from app.apis.users.users_model import UsersModel
-from app.apis.users.users_schema import GithubUser, OpencollectiveUser
+from app.apis.users.users_schema import GithubUser, OpencollectiveUser, User
 from app.apis.utils import TotalAndMonthAmount
 from app.core import migrate
 from app.core.postgres import database
@@ -44,15 +44,16 @@ test_user_1_opencollective = OpencollectiveUser(opencollective_id="oc_id_1",
                                                 opencollective_username="test_oc_user_1")
 
 
-# call with list of
-async def add_users_to_database(user_userid: [(GithubUser | OpencollectiveUser, Optional[int])]):
+async def add_users_to_database(user_userid: [(GithubUser | OpencollectiveUser, Optional[int])])->[User]:
+    added_users = []
     # user[1] will have a valid user_id if that user is supposed to already exist
     for user in user_userid:
         if isinstance(user[0], OpencollectiveUser):
-            await UsersModel().insert_or_update_opencollective_user(user[0], user[1])
+            added_users.append(await UsersModel().insert_or_update_opencollective_user(user[0], user[1]))
 
         if isinstance(user[0], GithubUser):
-            await UsersModel().insert_or_update_github_user(user[0], user[1])
+            added_users.append(await UsersModel().insert_or_update_github_user(user[0], user[1]))
+    return added_users
 
 
 @pytest.fixture
@@ -94,6 +95,21 @@ class TestHome:
         mock_get_user_sponsorship_amount.assert_called_once_with(test_user_1_github.github_auth_token)
         assert """Monthly Amount: $11.22""" in response.text
         assert """Total Amount: $33.44""" in response.text
+
+    @patch("fastapi.Request.session", new_callable=PropertyMock, return_value={
+            "session_id": "test_session_id",
+            "token_expiry": (
+                    (datetime.now(timezone.utc) + timedelta(seconds=30)).replace(tzinfo=timezone.utc).timestamp()
+            ),
+            "username": test_user_1_github.github_username,
+            "user_id": 1
+        })
+    async def test_get_home_session_reset_with_bad_db_user(self, _, async_client):
+        response = await async_client.get("/")
+        assert response.status_code == 200
+        assert '''<input type="submit" value="Login with Github"''' in str(
+            response.content
+        )
 
     @patch.object(GithubAPI, "get_user_sponsorship_amount", return_value=TEST_TOTAL_AND_MONTH)
     @patch.object(OpenCollectiveAPI, "get_user_sponsorship_amount", return_value=TEST_TOTAL_AND_MONTH)
