@@ -2,9 +2,9 @@ from typing import Optional
 
 from asyncpg.pool import Pool
 
+from app.apis.users.users_schema import GithubUser
 from app.apis.users.users_schema import User, OpencollectiveUser
 from app.core.postgres import database
-from users.users_schema import GithubUser
 
 
 class UsersModel:

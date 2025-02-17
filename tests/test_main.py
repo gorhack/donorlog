@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 from unittest.mock import patch, PropertyMock
 
 import pytest
@@ -6,13 +7,12 @@ from httpx import AsyncClient, ASGITransport
 
 from app.apis.github import GithubAPI
 from app.apis.opencollective import OpenCollectiveAPI
-from app.apis.users.users_schema import User
+from app.apis.users.users_model import UsersModel
+from app.apis.users.users_schema import GithubUser, OpencollectiveUser
 from app.apis.utils import TotalAndMonthAmount
 from app.core import migrate
 from app.core.postgres import database
 from app.main import app
-from users.users_model import UsersModel
-from users.users_schema import GithubUser, OpencollectiveUser
 
 
 @pytest.fixture
@@ -37,24 +37,34 @@ async def async_client():
     await database.disconnect()
 
 
-test_user_1_github = User(user_id=-1, username="test_user_1",
-                          github_user=GithubUser(github_id="gh_id_1", github_username="test_user_1",
-                                                 github_auth_token="gh_a1"))
+test_user_1_github = GithubUser(github_id="gh_id_1", github_username="test_user_1",
+                                github_auth_token="gh_a1")
 
-test_user_1_opencollective = User(user_id=1, username="test_user_1",
-                                  opencollective_user=OpencollectiveUser(opencollective_id="oc_id_1",
-                                                                         opencollective_username="test_oc_user_1"))
+test_user_1_opencollective = OpencollectiveUser(opencollective_id="oc_id_1",
+                                                opencollective_username="test_oc_user_1")
+
+
+# call with list of
+async def add_users_to_database(user_userid: [(GithubUser | OpencollectiveUser, Optional[int])]):
+    # user[1] will have a valid user_id if that user is supposed to already exist
+    for user in user_userid:
+        if isinstance(user[0], OpencollectiveUser):
+            await UsersModel().insert_or_update_opencollective_user(user[0], user[1])
+
+        if isinstance(user[0], GithubUser):
+            await UsersModel().insert_or_update_github_user(user[0], user[1])
 
 
 @pytest.fixture
 async def async_client_with_logged_in_user(async_client):
+    await add_users_to_database([(test_user_1_github, None)])
     with patch("fastapi.Request.session", new_callable=PropertyMock, return_value={
         "session_id": "test_session_id",
         "token_expiry": (
                 (datetime.now(timezone.utc) + timedelta(seconds=30)).replace(tzinfo=timezone.utc).timestamp()
         ),
-        "username": test_user_1_github.username,
-        "user_id": test_user_1_github.user_id
+        "username": test_user_1_github.github_username,
+        "user_id": 1
     }):
         yield async_client  # schema is going to be dropped after test ends
 
@@ -64,18 +74,6 @@ TEST_TOTAL_AND_MONTH = TotalAndMonthAmount(
     total=3344,
     last_checked=datetime.fromisoformat("2024-12-15T12:55:00Z")
 )
-
-
-# call with list of
-async def add_users_to_database(users: [User]):
-    for user in users:
-        if user.opencollective_user:
-            await UsersModel().insert_or_update_opencollective_user(
-                # user will have a valid user_id if that user is supposed to already exist and be logged in
-                user.opencollective_user, user.user_id if user.user_id > 0 else None)
-        if user.github_user:
-            await UsersModel().insert_or_update_github_user(
-                user.github_user, user.user_id if user.user_id > 0 else None)
 
 
 class TestHome:
@@ -90,11 +88,10 @@ class TestHome:
     @patch.object(GithubAPI, "get_user_sponsorship_amount", return_value=TEST_TOTAL_AND_MONTH)
     async def test_get_home_database_authenticated(self, mock_get_user_sponsorship_amount,
                                                    async_client_with_logged_in_user):
-        await add_users_to_database([test_user_1_github])
         response = await async_client_with_logged_in_user.get("/")
         assert response.status_code == 200
         assert "<p>Username: test_user_1</p>" in response.text
-        mock_get_user_sponsorship_amount.assert_called_once_with(test_user_1_github.github_user.github_auth_token)
+        mock_get_user_sponsorship_amount.assert_called_once_with(test_user_1_github.github_auth_token)
         assert """Monthly Amount: $11.22""" in response.text
         assert """Total Amount: $33.44""" in response.text
 
@@ -102,7 +99,7 @@ class TestHome:
     @patch.object(OpenCollectiveAPI, "get_user_sponsorship_amount", return_value=TEST_TOTAL_AND_MONTH)
     async def test_get_home_database_authenticated_with_opencollective(self, mock_get_user_sponsorship_amount, _,
                                                                        async_client_with_logged_in_user):
-        await add_users_to_database([test_user_1_github, test_user_1_opencollective])
+        await add_users_to_database([(test_user_1_opencollective, 1)])
         response = await async_client_with_logged_in_user.get("/")
         assert response.status_code == 200
         mock_get_user_sponsorship_amount.assert_called_once_with("oc_id_1")

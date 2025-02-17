@@ -6,17 +6,17 @@ from fastapi import status
 from app.apis.github import GithubAPI
 from app.apis.opencollective import OpenCollectiveAPI
 from app.apis.utils import TotalAndMonthAmount
-from test_main import add_users_to_database, test_user_1_github, test_user_1_opencollective
+from tests.test_main import add_users_to_database, test_user_1_github, test_user_1_opencollective
 from tests.test_main import async_client, TEST_TOTAL_AND_MONTH
 
 
 class TestGithubUsers:
     @patch.object(GithubAPI, "get_user_sponsorship_amount", return_value=TEST_TOTAL_AND_MONTH)
     async def test_get_github_user(self, mock_get_user_sponsorship_amount, async_client):
-        await add_users_to_database([test_user_1_github])
+        await add_users_to_database([(test_user_1_github, None)])
         response = await async_client.get("/users/test_user_1")
         assert response.status_code == status.HTTP_200_OK
-        mock_get_user_sponsorship_amount.assert_called_once_with(test_user_1_github.github_user.github_auth_token)
+        mock_get_user_sponsorship_amount.assert_called_once_with(test_user_1_github.github_auth_token)
         assert response.json() == {
             "username": "test_user_1",
             "github": {
@@ -38,7 +38,7 @@ class TestGithubUsers:
     ))
     async def test_with_opencollective(self, mock_oc_get_user_sponsorship_amount, _,
                                        async_client):
-        await add_users_to_database([test_user_1_github, test_user_1_opencollective])
+        await add_users_to_database([(test_user_1_github, None), (test_user_1_opencollective, 1)])
         response = await async_client.get("/users/test_user_1")
         mock_oc_get_user_sponsorship_amount.assert_called_once_with("oc_id_1")
         assert response.status_code == status.HTTP_200_OK

@@ -4,9 +4,9 @@ from unittest.mock import patch
 import pytest
 
 from app.apis.users.users_model import UsersModel
+from app.apis.users.users_schema import GithubUser, OpencollectiveUser
 from app.apis.users.users_schema import User
 from tests.test_main import async_client
-from users.users_schema import GithubUser, OpencollectiveUser
 
 
 class TestExternalAPI:
