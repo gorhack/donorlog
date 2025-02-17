@@ -14,7 +14,7 @@ from app.main import app
 
 @pytest.fixture
 async def async_client():
-    # TODO change RDS_DATABASE_URL for tests
+    database.database_url = "postgresql://dl:dl@localhost:5555/donorlog_test"
     await database.connect()
     query = """
         DROP SCHEMA IF EXISTS public CASCADE;

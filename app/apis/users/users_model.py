@@ -51,8 +51,8 @@ class UsersModel:
                     opencollective_username=user.get("opencollective_username"))
 
             return User(user_id=user.get("user_id"), username=username,
-                        github_user=dict(github_user) if github_user else None,
-                        opencollective_user=dict(opencollective_user) if opencollective_user else None)
+                        github_user=github_user,
+                        opencollective_user=opencollective_user)
 
     async def insert_or_update_github_user(self, github_user: GithubUser, user_id=None) -> Optional[User]:
         if not github_user:

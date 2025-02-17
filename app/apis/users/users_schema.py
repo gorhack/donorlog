@@ -1,6 +1,6 @@
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, SkipValidation
 
 from app.apis.utils import TotalAndMonthAmount
 
@@ -17,8 +17,8 @@ class OpencollectiveUser(BaseModel):
 class User(BaseModel):
     user_id: int
     username: str
-    github_user: Optional[GithubUser] = None
-    opencollective_user: Optional[OpencollectiveUser] = None
+    github_user: Optional[SkipValidation[GithubUser]] = None
+    opencollective_user: Optional[SkipValidation[OpencollectiveUser]] = None
 
 
 class DisplayUser(BaseModel):

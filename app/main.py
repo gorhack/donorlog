@@ -56,7 +56,10 @@ async def root(
 ):
     display_user = None
     if is_valid_session:
-        display_user = await search_overview(request.session.get("username"))
+        try:
+            display_user = await search_overview(request.session.get("username"))
+        except HTTPException:
+            request.session.clear()
     return templates.TemplateResponse(
         request=request,
         name="index.html",
@@ -196,8 +199,8 @@ async def access_token_from_authorization_code_flow(
     access_token = await GithubAPI.get_access_token(code)
     response = RedirectResponse(url=redirect_uri, status_code=status.HTTP_303_SEE_OTHER)
     response.delete_cookie("gh_login_state")
-    (session_id, user_id) = (request.session.get("session_id"), request.session.get("user_id"))
-    # session setup
+    (session_id, user_id) = (request.session.get("session_id"), request.session.get("user_id")) if validate_session(
+        request) else (None, None)
     # TODO: handle errors
     (gh_id, gh_username) = await GithubAPI.get_id_and_username(access_token)
     user = await UsersModel().insert_or_update_github_user(
@@ -205,13 +208,14 @@ async def access_token_from_authorization_code_flow(
         user_id=user_id)
     if not user:
         raise HTTPException(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        detail="Database failure... try again later.",
-    )
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database failure... try again later.",
+        )
     if not session_id:
         request.session.update({
             "session_id": create_random_session_string(),
-            "token_expiry": ((datetime.now(tz=timezone.utc) + timedelta(hours=1)).replace(tzinfo=timezone.utc).timestamp()),
+            "token_expiry": (
+                (datetime.now(tz=timezone.utc) + timedelta(hours=1)).replace(tzinfo=timezone.utc).timestamp()),
         })
     request.session.update({
         "user_id": user.user_id,
@@ -264,7 +268,8 @@ async def access_token_from_authorization_code_flow(
     access_token = await OpenCollectiveAPI.get_access_token(code)
     response = RedirectResponse(url=redirect_uri, status_code=status.HTTP_303_SEE_OTHER)
     response.delete_cookie("oc_login_state")
-    (session_id, user_id) = (request.session.get("session_id"), request.session.get("user_id"))
+    (session_id, user_id) = (request.session.get("session_id"), request.session.get("user_id")) if validate_session(
+        request) else (None, None)
     (oc_id, oc_username) = await OpenCollectiveAPI.get_id_and_username(access_token)
     # add opencollective_id to database
     user = await UsersModel().insert_or_update_opencollective_user(
