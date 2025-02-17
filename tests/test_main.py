@@ -44,7 +44,7 @@ test_user_1_opencollective = OpencollectiveUser(opencollective_id="oc_id_1",
                                                 opencollective_username="test_oc_user_1")
 
 
-async def add_users_to_database(user_userid: [(GithubUser | OpencollectiveUser, Optional[int])])->[User]:
+async def add_users_to_database(user_userid: [(GithubUser | OpencollectiveUser, Optional[int])]) -> [User]:
     added_users = []
     # user[1] will have a valid user_id if that user is supposed to already exist
     for user in user_userid:
@@ -82,43 +82,65 @@ class TestHome:
         response = await async_client.get("/")
         assert response.status_code == 200
         # TODO improve testing for templates
-        assert '''<input type="submit" value="Login with Github"''' in str(
-            response.content
-        )
+        assert "Login with GitHub" in response.text
+        assert "Login with OpenCollective" in response.text
 
     @patch.object(GithubAPI, "get_user_sponsorship_amount", return_value=TEST_TOTAL_AND_MONTH)
-    async def test_get_home_database_authenticated(self, mock_get_user_sponsorship_amount,
+    async def test_get_home_github_user(self, mock_get_user_sponsorship_amount,
                                                    async_client_with_logged_in_user):
         response = await async_client_with_logged_in_user.get("/")
         assert response.status_code == 200
-        assert "<p>Username: test_user_1</p>" in response.text
+        assert "Username: test_user_1" in response.text
         mock_get_user_sponsorship_amount.assert_called_once_with(test_user_1_github.github_auth_token)
-        assert """Monthly Amount: $11.22""" in response.text
-        assert """Total Amount: $33.44""" in response.text
+        assert "Monthly Amount: $11.22" in response.text
+        assert "Total Amount: $33.44" in response.text
+        assert "Link OpenCollective" in response.text
+        assert "Linked GitHub" in response.text
 
     @patch("fastapi.Request.session", new_callable=PropertyMock, return_value={
-            "session_id": "test_session_id",
-            "token_expiry": (
-                    (datetime.now(timezone.utc) + timedelta(seconds=30)).replace(tzinfo=timezone.utc).timestamp()
-            ),
-            "username": test_user_1_github.github_username,
-            "user_id": 1
-        })
+        "session_id": "test_session_id",
+        "token_expiry": (
+                (datetime.now(timezone.utc) + timedelta(seconds=30)).replace(tzinfo=timezone.utc).timestamp()
+        ),
+        "username": test_user_1_github.github_username,
+        "user_id": 1
+    })
     async def test_get_home_session_reset_with_bad_db_user(self, _, async_client):
         response = await async_client.get("/")
         assert response.status_code == 200
-        assert '''<input type="submit" value="Login with Github"''' in str(
-            response.content
-        )
+        assert "Login with GitHub" in response.text
+        assert "Login with OpenCollective" in response.text
+
+    @patch.object(OpenCollectiveAPI, "get_user_sponsorship_amount", return_value=TEST_TOTAL_AND_MONTH)
+    @patch("fastapi.Request.session", new_callable=PropertyMock, return_value={
+        "session_id": "test_session_id",
+        "token_expiry": (
+                (datetime.now(timezone.utc) + timedelta(seconds=30)).replace(tzinfo=timezone.utc).timestamp()
+        ),
+        "username": test_user_1_opencollective.opencollective_username,
+        "user_id": 1
+    })
+    async def test_get_home_opencollective_user(self, _, mock_get_user_sponsorship_amount,
+                                                   async_client):
+        await add_users_to_database([(test_user_1_opencollective, None)])
+        response = await async_client.get("/")
+        assert response.status_code == 200
+        assert "Username: test_oc_user_1" in response.text
+        mock_get_user_sponsorship_amount.assert_called_once_with(test_user_1_opencollective.opencollective_id)
+        assert "Monthly Amount: $11.22" in response.text
+        assert "Total Amount: $33.44" in response.text
+        assert "Link GitHub" in response.text
+        assert "Linked OpenCollective" in response.text
 
     @patch.object(GithubAPI, "get_user_sponsorship_amount", return_value=TEST_TOTAL_AND_MONTH)
     @patch.object(OpenCollectiveAPI, "get_user_sponsorship_amount", return_value=TEST_TOTAL_AND_MONTH)
-    async def test_get_home_database_authenticated_with_opencollective(self, mock_get_user_sponsorship_amount, _,
+    async def test_get_home_github_and_opencollective(self, mock_get_user_sponsorship_amount, _,
                                                                        async_client_with_logged_in_user):
         await add_users_to_database([(test_user_1_opencollective, 1)])
         response = await async_client_with_logged_in_user.get("/")
         assert response.status_code == 200
         mock_get_user_sponsorship_amount.assert_called_once_with("oc_id_1")
-        assert """<p>OpenCollective</p>""" in response.text
-        assert """Total Amount: $66.88""" in response.text
-        assert """Monthly Amount: $22.44""" in response.text
+        assert "Linked OpenCollective" in response.text
+        assert "Linked GitHub" in response.text
+        assert "Total Amount: $66.88" in response.text
+        assert "Monthly Amount: $22.44" in response.text
