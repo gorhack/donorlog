@@ -8,3 +8,13 @@ services:
     environment:
       PGDATA: "/var/lib/postgresql/data/donorlog"
     restart: always
+  test_db:
+    image: postgres:17.2-alpine
+    ports:
+      - '5555:5432'
+    env_file:
+      - docker.env
+    environment:
+      PGDATA: "/var/lib/postgresql/data/donorlog_test"
+      POSTGRES_DB: "donorlog_test"
+    restart: always
