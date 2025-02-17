@@ -13,7 +13,7 @@ def create_random_session_string() -> str:
 def is_token_expired(unix_timestamp: int) -> bool:
     if unix_timestamp:
         datetime_from_unix = datetime.fromtimestamp(unix_timestamp, tz=timezone.utc)
-        current_time = datetime.now(timezone.utc)
+        current_time = datetime.now(tz=timezone.utc)
         difference_in_minutes = (datetime_from_unix - current_time).total_seconds() / 60
         return difference_in_minutes <= 0
 

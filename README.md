@@ -16,8 +16,8 @@ contributions to these projects.
 This application will provide an easy way to showcase both users and the open source projects themselves. This
 application will do the following:
 
-1) Utilize open source donation platforms (GitHub, OpenCollective, etc) to identify user contributions and projects
-2) Publicly acknowledge and support users that donate to open source projects (tier badges, etc)
+1) Utilize open source donation platforms (GitHub, OpenCollective, etc.) to identify user contributions and projects
+2) Publicly acknowledge and support users that donate to open source projects (tier badges, etc.)
 3) Identify projects worthy of support (i.e. many users with small amounts or large amounts but few total users)
 4) Determine a project to donate $X each month based on #3
 
@@ -41,7 +41,7 @@ application will do the following:
 - Python 3.8+
 - direnv and update `secrets` file with updated OAuth client IDs and secrets
 - docker-compose for Postgres database
-- Register a new [Github OAuth application](https://github.com/settings/applications/new)
+- Register a new [GitHub OAuth application](https://github.com/settings/applications/new)
   - Callback URL is `.../oauth/gh_token`
 - Register a new [OpenCollective OAuth application](https://docs.opencollective.com/help/developers/oauth)
   - Callback URL is `.../oauth/oc_token`

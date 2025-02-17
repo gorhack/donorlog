@@ -5,14 +5,24 @@ from pydantic import BaseModel
 from app.apis.utils import TotalAndMonthAmount
 
 
-class User(BaseModel):
+class GithubUser(BaseModel):
+    github_id: str
     github_username: str
-    github_auth_token: str
-    opencollective_id: Optional[str] = None
+    github_auth_token: Optional[str]
+
+class OpencollectiveUser(BaseModel):
+    opencollective_id: str
+    opencollective_username: str
+
+class User(BaseModel):
+    user_id: int
+    username: str
+    github_user: Optional[GithubUser] = None
+    opencollective_user: Optional[OpencollectiveUser] = None
 
 
 class DisplayUser(BaseModel):
-    github_username: str
+    username: str
     github: Optional[TotalAndMonthAmount] = None
     opencollective: Optional[TotalAndMonthAmount] = None
 

@@ -15,7 +15,7 @@ from app.apis.github import GithubAPI
 from app.apis.opencollective import OpenCollectiveAPI
 from app.apis.users.users_model import UsersModel
 from app.apis.users.users_route import users_router, search_overview
-from app.apis.users.users_schema import User
+from app.apis.users.users_schema import GithubUser, OpencollectiveUser
 from app.apis.utils import HTTPError
 from app.core import migrate
 from app.core.config import settings
@@ -56,12 +56,7 @@ async def root(
 ):
     display_user = None
     if is_valid_session:
-        # lookup user
-        github_username = request.session.get("username")
-        user = await UsersModel.lookup_by_github_username(github_username)
-        if user:
-            # TODO handle errors
-            display_user = await search_overview("gorhack")
+        display_user = await search_overview(request.session.get("username"))
     return templates.TemplateResponse(
         request=request,
         name="index.html",
@@ -163,6 +158,7 @@ async def logout(request: Request):
     responses={
         status.HTTP_307_TEMPORARY_REDIRECT: {"description": "Redirect to referer"},
         status.HTTP_401_UNAUTHORIZED: {"model": HTTPError},
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {"model": HTTPError},
     },
     status_code=status.HTTP_307_TEMPORARY_REDIRECT,
 )
@@ -200,16 +196,27 @@ async def access_token_from_authorization_code_flow(
     access_token = await GithubAPI.get_access_token(code)
     response = RedirectResponse(url=redirect_uri, status_code=status.HTTP_303_SEE_OTHER)
     response.delete_cookie("gh_login_state")
-
+    (session_id, user_id) = (request.session.get("session_id"), request.session.get("user_id"))
     # session setup
     # TODO: handle errors
-    (_, gh_username) = await GithubAPI.get_id_and_username(access_token)
+    (gh_id, gh_username) = await GithubAPI.get_id_and_username(access_token)
+    user = await UsersModel().insert_or_update_github_user(
+        github_user=GithubUser(github_id=gh_id, github_username=gh_username, github_auth_token=access_token),
+        user_id=user_id)
+    if not user:
+        raise HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail="Database failure... try again later.",
+    )
+    if not session_id:
+        request.session.update({
+            "session_id": create_random_session_string(),
+            "token_expiry": ((datetime.now(tz=timezone.utc) + timedelta(hours=1)).replace(tzinfo=timezone.utc).timestamp()),
+        })
     request.session.update({
-        "session_id": create_random_session_string(),
-        "token_expiry": ((datetime.now(timezone.utc) + timedelta(minutes=15)).replace(tzinfo=timezone.utc).timestamp()),
-        "username": gh_username,
+        "user_id": user.user_id,
+        "username": user.username,
     })
-    await UsersModel().insert_user_or_update_auth_token(User(github_username=gh_username, github_auth_token=access_token))
     return response
 
 
@@ -219,6 +226,7 @@ async def access_token_from_authorization_code_flow(
     responses={
         status.HTTP_307_TEMPORARY_REDIRECT: {"description": "Redirect to referer"},
         status.HTTP_401_UNAUTHORIZED: {"model": HTTPError},
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {"model": HTTPError},
     },
     status_code=status.HTTP_307_TEMPORARY_REDIRECT,
 )
@@ -256,8 +264,25 @@ async def access_token_from_authorization_code_flow(
     access_token = await OpenCollectiveAPI.get_access_token(code)
     response = RedirectResponse(url=redirect_uri, status_code=status.HTTP_303_SEE_OTHER)
     response.delete_cookie("oc_login_state")
-    (oc_id, _) = await OpenCollectiveAPI.get_id_and_username(access_token)
+    (session_id, user_id) = (request.session.get("session_id"), request.session.get("user_id"))
+    (oc_id, oc_username) = await OpenCollectiveAPI.get_id_and_username(access_token)
     # add opencollective_id to database
-    github_username = request.session.get("username")
-    await UsersModel.add_opencollective_id_to_user(github_username, oc_id)
+    user = await UsersModel().insert_or_update_opencollective_user(
+        opencollective_user=OpencollectiveUser(opencollective_id=oc_id, opencollective_username=oc_username),
+        user_id=user_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database failure... try again later.",
+        )
+    if not session_id:
+        request.session.update({
+            "session_id": create_random_session_string(),
+            "token_expiry": (
+                (datetime.now(tz=timezone.utc) + timedelta(hours=1)).replace(tzinfo=timezone.utc).timestamp()),
+        })
+    request.session.update({
+        "user_id": user.user_id,
+        "username": user.username,
+    })
     return response
