@@ -1,11 +1,10 @@
-import json
-from base64 import b64encode, b64decode, urlsafe_b64encode
+import base64
+import hashlib
+import secrets
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from Crypto.Cipher import AES
-from Crypto.Random import get_random_bytes
 from fastapi import FastAPI, Request, HTTPException, status, Depends
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -20,7 +19,7 @@ from app.apis.utils import HTTPError
 from app.core import migrate
 from app.core.config import settings
 from app.core.postgres import database
-from app.session.session_layer import validate_session, create_random_session_string
+from app.session.session_layer import validate_session
 
 
 @asynccontextmanager
@@ -42,11 +41,7 @@ app.add_middleware(SessionMiddleware, secret_key=settings.SESSION_SECRET)
 BASE_DIR = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(Path(BASE_DIR, "templates")))
 
-# key used for state encryption
-# not worried about key changing when reloading the application because
-# the encrypted state is only used during login process and if it fails
-# will just result in the user having to log in again.
-STATE_ENCRYPTION_KEY = get_random_bytes(16)
+OAUTH_STATE_PRIVATE_KEY = secrets.token_bytes(1024)
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -75,33 +70,23 @@ async def root(
     response_class=RedirectResponse,
     tags=["Authentication"],
 )
-async def github_login():
+async def github_login(request: Request):
     """
     Redirect the user to log into GitHub.
 
-    ***Cookie: `gh_login_state`*** Sets cookie with
-    [AEAD encrypted](https://www.pycryptodome.org/en/v3.14.1/src/cipher/modern.html#eax-mode-1)
-    state to prevent CSRF attacks during OAuth.
+    ***Session: `state`*** Sets session with decently
+    [safe](https://stackoverflow.com/questions/26132066/what-is-the-purpose-of-the-state-parameter-in-oauth-authorization-request)
+    [state](https://developers.google.com/identity/openid-connect/openid-connect?hl=en#python) to prevent CSRF attacks
+    during OAuth.
     """
-    # secrets.token_url_safe equivalent
-    state = urlsafe_b64encode(get_random_bytes(16)).rstrip(b"=").decode("utf-8")
+    random = secrets.token_bytes(1024)
+    signature = hashlib.sha256(random + OAUTH_STATE_PRIVATE_KEY).hexdigest()
+    state = base64.urlsafe_b64encode(random).decode() + "." + signature
+    request.session.update({"state": state})
+
     response = RedirectResponse(
-        GithubAPI.login(state),
+        GithubAPI.login(signature),
         status_code=status.HTTP_307_TEMPORARY_REDIRECT,
-    )
-    nonce = get_random_bytes(16)
-    cipher = AES.new(STATE_ENCRYPTION_KEY, AES.MODE_EAX, nonce)
-    ct_state, tag = cipher.encrypt_and_digest(state.encode())
-    response.set_cookie(
-        "gh_login_state",
-        value=json.dumps(
-            {
-                "nonce": b64encode(nonce).decode("utf-8"),
-                "state": b64encode(ct_state).decode("utf-8"),
-                "tag": b64encode(tag).decode("utf-8"),
-            }
-        ),
-        httponly=True,
     )
     return response
 
@@ -111,34 +96,25 @@ async def github_login():
     response_class=RedirectResponse,
     tags=["Authentication"],
 )
-async def opencollective_login():
+async def opencollective_login(request: Request):
     """
     Redirect the user to log into OpenCollective.
 
-    ***Cookie: `oc_login_state`*** Sets cookie with
-    [AEAD encrypted](https://www.pycryptodome.org/en/v3.14.1/src/cipher/modern.html#eax-mode-1)
-    state to prevent CSRF attacks during OAuth.
+    ***Session: `state`*** Sets session with decently
+    [safe](https://stackoverflow.com/questions/26132066/what-is-the-purpose-of-the-state-parameter-in-oauth-authorization-request)
+    [state](https://developers.google.com/identity/openid-connect/openid-connect?hl=en#python) to prevent CSRF attacks
+    during OAuth.
     """
-    # secrets.token_url_safe equivalent
-    state = urlsafe_b64encode(get_random_bytes(16)).rstrip(b"=").decode("utf-8")
+    random = secrets.token_bytes(1024)
+    signature = hashlib.sha256(random + OAUTH_STATE_PRIVATE_KEY).hexdigest()
+    state = base64.urlsafe_b64encode(random).decode() + "." + signature
+    request.session.update({"state": state})
+
     response = RedirectResponse(
-        OpenCollectiveAPI.login(state),
+        OpenCollectiveAPI.login(signature),
         status_code=status.HTTP_307_TEMPORARY_REDIRECT,
     )
-    nonce = get_random_bytes(16)
-    cipher = AES.new(STATE_ENCRYPTION_KEY, AES.MODE_EAX, nonce)
-    ct_state, tag = cipher.encrypt_and_digest(state.encode())
-    response.set_cookie(
-        "oc_login_state",
-        value=json.dumps(
-            {
-                "nonce": b64encode(nonce).decode("utf-8"),
-                "state": b64encode(ct_state).decode("utf-8"),
-                "tag": b64encode(tag).decode("utf-8"),
-            }
-        ),
-        httponly=True,
-    )
+
     return response
 
 
@@ -171,23 +147,17 @@ async def access_token_from_authorization_code_flow(
     """
     This is the reply from the user logging in to GitHub. The request contains the login
     code from the OAuth authorizationCode flow and should contain the same state from
-    the `gh_login_state` cookie.
+    the session.
     """
     state_error = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Authorization check failed due to potential CSRF attack.",
     )
     try:
-        cookie_state = json.loads(request.cookies.get("gh_login_state"))
-        cipher = AES.new(
-            STATE_ENCRYPTION_KEY,
-            AES.MODE_EAX,
-            nonce=b64decode(cookie_state.get("nonce")),
-        )
-        pt_state = cipher.decrypt_and_verify(
-            b64decode(cookie_state.get("state")), b64decode(cookie_state.get("tag"))
-        ).decode("utf-8")
-        if state != pt_state:
+        session_state = request.session.pop("state")
+        verify_val = hashlib.sha256(
+            base64.urlsafe_b64decode(session_state.split(".")[0]) + OAUTH_STATE_PRIVATE_KEY).hexdigest()
+        if verify_val != state:
             raise state_error
     except (ValueError, KeyError):
         raise state_error
@@ -198,7 +168,6 @@ async def access_token_from_authorization_code_flow(
         redirect_uri = str(request.base_url)
     access_token = await GithubAPI.get_access_token(code)
     response = RedirectResponse(url=redirect_uri, status_code=status.HTTP_303_SEE_OTHER)
-    response.delete_cookie("gh_login_state")
     (session_id, user_id) = (request.session.get("session_id"), request.session.get("user_id")) if validate_session(
         request) else (None, None)
     # TODO: handle errors
@@ -213,7 +182,7 @@ async def access_token_from_authorization_code_flow(
         )
     if not session_id:
         request.session.update({
-            "session_id": create_random_session_string(),
+            "session_id": secrets.token_urlsafe(1024),
             "token_expiry": (
                 (datetime.now(tz=timezone.utc) + timedelta(hours=1)).replace(tzinfo=timezone.utc).timestamp()),
         })
@@ -240,23 +209,17 @@ async def access_token_from_authorization_code_flow(
     """
     This is the reply from the user logging in to OpenCollective. The request contains the login
     code from the OAuth authorizationCode flow and should contain the same state from
-    the `oc_login_state` cookie.
+    the session.
     """
     state_error = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Authorization check failed due to potential CSRF attack.",
     )
     try:
-        cookie_state = json.loads(request.cookies.get("oc_login_state"))
-        cipher = AES.new(
-            STATE_ENCRYPTION_KEY,
-            AES.MODE_EAX,
-            nonce=b64decode(cookie_state.get("nonce")),
-        )
-        pt_state = cipher.decrypt_and_verify(
-            b64decode(cookie_state.get("state")), b64decode(cookie_state.get("tag"))
-        ).decode("utf-8")
-        if state != pt_state:
+        session_state = request.session.pop("state")
+        verify_val = hashlib.sha256(
+            base64.urlsafe_b64decode(session_state.split(".")[0]) + OAUTH_STATE_PRIVATE_KEY).hexdigest()
+        if verify_val != state:
             raise state_error
     except (ValueError, KeyError):
         raise state_error
@@ -267,7 +230,6 @@ async def access_token_from_authorization_code_flow(
         redirect_uri = str(request.base_url)
     access_token = await OpenCollectiveAPI.get_access_token(code)
     response = RedirectResponse(url=redirect_uri, status_code=status.HTTP_303_SEE_OTHER)
-    response.delete_cookie("oc_login_state")
     (session_id, user_id) = (request.session.get("session_id"), request.session.get("user_id")) if validate_session(
         request) else (None, None)
     (oc_id, oc_username) = await OpenCollectiveAPI.get_id_and_username(access_token)
@@ -282,7 +244,7 @@ async def access_token_from_authorization_code_flow(
         )
     if not session_id:
         request.session.update({
-            "session_id": create_random_session_string(),
+            "session_id": secrets.token_urlsafe(1024),
             "token_expiry": (
                 (datetime.now(tz=timezone.utc) + timedelta(hours=1)).replace(tzinfo=timezone.utc).timestamp()),
         })

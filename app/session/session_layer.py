@@ -1,13 +1,7 @@
 import logging
-import secrets
 from datetime import datetime, timezone
 
 from fastapi import Request
-
-
-# https://medium.com/@maazbinmustaqeem/how-to-easily-validate-user-sessions-in-fastapi-with-dependency-injection-d28baebe6e19
-def create_random_session_string() -> str:
-    return secrets.token_urlsafe(32)  # Generates a random URL-safe string
 
 
 def is_token_expired(unix_timestamp: int) -> bool:
