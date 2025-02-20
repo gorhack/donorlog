@@ -16,7 +16,7 @@ itsdangerous==2.2.0
 # for accessing form data
 python-multipart==0.0.20
 
-# for types
+# for FastAPI types
 typing_extensions==4.12.2
 pydantic==2.10.6
 

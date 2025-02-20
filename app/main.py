@@ -15,7 +15,6 @@ from app.apis.opencollective import OpenCollectiveAPI
 from app.apis.users.users_model import UsersModel
 from app.apis.users.users_route import users_router, search_overview
 from app.apis.users.users_schema import GithubUser, OpencollectiveUser
-from app.apis.utils import HTTPError
 from app.core import migrate
 from app.core.config import settings
 from app.core.postgres import database
@@ -136,8 +135,8 @@ async def logout(request: Request):
     tags=["Authentication"],
     responses={
         status.HTTP_307_TEMPORARY_REDIRECT: {"description": "Redirect to referer"},
-        status.HTTP_401_UNAUTHORIZED: {"model": HTTPError},
-        status.HTTP_500_INTERNAL_SERVER_ERROR: {"model": HTTPError},
+        status.HTTP_401_UNAUTHORIZED: {"description": "Authorization check failed due to potential CSRF attack."},
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {"description": "Database failure... try again later."},
     },
     status_code=status.HTTP_307_TEMPORARY_REDIRECT,
 )
@@ -149,10 +148,7 @@ async def access_token_from_authorization_code_flow(
     code from the OAuth authorizationCode flow and should contain the same state from
     the session.
     """
-    state_error = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Authorization check failed due to potential CSRF attack.",
-    )
+    state_error = HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
     try:
         session_state = request.session.pop("state")
         verify_val = hashlib.sha256(
@@ -176,10 +172,7 @@ async def access_token_from_authorization_code_flow(
         github_user=GithubUser(github_id=gh_id, github_username=gh_username, github_auth_token=access_token),
         user_id=user_id)
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database failure... try again later.",
-        )
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
     if not session_id:
         request.session.update({
             "session_id": secrets.token_urlsafe(1024),
@@ -198,8 +191,8 @@ async def access_token_from_authorization_code_flow(
     tags=["Authentication"],
     responses={
         status.HTTP_307_TEMPORARY_REDIRECT: {"description": "Redirect to referer"},
-        status.HTTP_401_UNAUTHORIZED: {"model": HTTPError},
-        status.HTTP_500_INTERNAL_SERVER_ERROR: {"model": HTTPError},
+        status.HTTP_401_UNAUTHORIZED: {"description": "Authorization check failed due to potential CSRF attack."},
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {"description": "Database failure... try again later."},
     },
     status_code=status.HTTP_307_TEMPORARY_REDIRECT,
 )
@@ -211,10 +204,7 @@ async def access_token_from_authorization_code_flow(
     code from the OAuth authorizationCode flow and should contain the same state from
     the session.
     """
-    state_error = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Authorization check failed due to potential CSRF attack.",
-    )
+    state_error = HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
     try:
         session_state = request.session.pop("state")
         verify_val = hashlib.sha256(
@@ -238,10 +228,7 @@ async def access_token_from_authorization_code_flow(
         opencollective_user=OpencollectiveUser(opencollective_id=oc_id, opencollective_username=oc_username),
         user_id=user_id)
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database failure... try again later.",
-        )
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
     if not session_id:
         request.session.update({
             "session_id": secrets.token_urlsafe(1024),

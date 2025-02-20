@@ -1,27 +1,38 @@
+from dataclasses import dataclass
+from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, SkipValidation
 
-from app.apis.utils import TotalAndMonthAmount
+@dataclass
+class TotalAndMonthAmount:
+    month: int
+    total: int
+    last_checked: datetime
 
 
-class GithubUser(BaseModel):
+@dataclass
+class GithubUser:
     github_id: str
     github_username: str
     github_auth_token: Optional[str]
 
-class OpencollectiveUser(BaseModel):
+
+@dataclass
+class OpencollectiveUser:
     opencollective_id: str
     opencollective_username: str
 
-class User(BaseModel):
+
+@dataclass
+class User:
     user_id: int
     username: str
-    github_user: Optional[SkipValidation[GithubUser]] = None
-    opencollective_user: Optional[SkipValidation[OpencollectiveUser]] = None
+    github_user: Optional[GithubUser] = None
+    opencollective_user: Optional[OpencollectiveUser] = None
 
 
-class DisplayUser(BaseModel):
+@dataclass
+class DisplayUser:
     username: str
     github: Optional[TotalAndMonthAmount] = None
     opencollective: Optional[TotalAndMonthAmount] = None
