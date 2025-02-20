@@ -3,6 +3,7 @@ from typing import Optional
 from asyncpg.pool import Pool
 
 from app.apis.users.users_schema import GithubUser
+from app.apis.users.users_schema import TotalAndMonthAmount
 from app.apis.users.users_schema import User, OpencollectiveUser
 from app.core.postgres import database
 
@@ -28,7 +29,14 @@ class UsersModel:
         if username is None:
             return None
         query = (
-            "SELECT users.user_id, github_id, github_username, github_auth_token, opencollective_id, opencollective_username "
+            "SELECT users.user_id, github_id, github_username, github_auth_token, "
+            "  github_users.total_cents AS gh_total_cents , "
+            "  github_users.month_cents AS gh_month_cents, "
+            "  github_users.last_checked AS gh_last_checked, "
+            "  opencollective_id, opencollective_username, "
+            "  opencollective_users.total_cents AS oc_total_cents, "
+            "  opencollective_users.month_cents AS oc_month_cents, "
+            "  opencollective_users.last_checked AS oc_last_checked "
             "FROM users "
             "   LEFT JOIN github_users ON github_users.user_id = users.user_id "
             "   LEFT JOIN opencollective_users ON opencollective_users.user_id = users.user_id "
@@ -44,11 +52,19 @@ class UsersModel:
                 github_user = GithubUser(
                     github_id=user.get("github_id"),
                     github_username=user.get("github_username"),
-                    github_auth_token=user.get("github_auth_token"))
+                    github_auth_token=user.get("github_auth_token"),
+                    amount=TotalAndMonthAmount(
+                        total=user.get("gh_total_cents"),
+                        month=user.get("gh_month_cents"),
+                        last_checked=user.get("gh_last_checked")))
             if user.get("opencollective_id"):
                 opencollective_user = OpencollectiveUser(
                     opencollective_id=user.get("opencollective_id"),
-                    opencollective_username=user.get("opencollective_username"))
+                    opencollective_username=user.get("opencollective_username"),
+                    amount=TotalAndMonthAmount(
+                        total=user.get("oc_total_cents"),
+                        month=user.get("oc_month_cents"),
+                        last_checked=user.get("oc_last_checked")))
 
             return User(user_id=user.get("user_id"), username=username,
                         github_user=github_user,
@@ -64,34 +80,48 @@ class UsersModel:
             if not user_id and not db_user_id:
                 # new user
                 query = ("WITH CONFLICT_USERNAME AS ("
-                         "    SELECT CONCAT($2::VARCHAR, '_', substr(md5(random()::TEXT), 1, 5)) as fixed_username FROM users WHERE username = $2)"
-                         ", NEW_USER AS ("
-                         "    INSERT INTO users (username) VALUES (COALESCE((SELECT fixed_username FROM CONFLICT_USERNAME), $2)) RETURNING user_id, username)"
-                         "INSERT INTO github_users (github_id, github_username, github_auth_token, user_id)"
-                         "  VALUES ($1, $2, $3, (SELECT user_id FROM NEW_USER)) RETURNING user_id;")
+                         "  SELECT CONCAT($2::VARCHAR, '_', substr(md5(random()::TEXT), 1, 5)) as fixed_username FROM users WHERE username = $2"
+                         "), NEW_USER AS ("
+                         "  INSERT INTO users (username) VALUES "
+                         "  ("
+                         "    COALESCE((SELECT fixed_username FROM CONFLICT_USERNAME), $2)"
+                         "  ) RETURNING user_id, username"
+                         ")"
+                         "INSERT INTO github_users ("
+                         "  github_id, github_username, github_auth_token, user_id, total_cents, month_cents, last_checked"
+                         ") VALUES ($1, $2, $3, (SELECT user_id FROM NEW_USER), $4, $5, $6) RETURNING user_id;")
                 new_user_id = await connection.fetchval(
                     query, github_user.github_id, github_user.github_username,
-                    github_user.github_auth_token)
+                    github_user.github_auth_token, github_user.amount.total, github_user.amount.month,
+                    github_user.amount.last_checked)
             elif user_id and db_user_id and user_id != db_user_id:
                 # user already logged in, delete conflicting user and its other associated accounts
                 await connection.execute("DELETE FROM users WHERE user_id = $1;", db_user_id)
-                query = ("INSERT INTO github_users (github_id, github_username, github_auth_token, user_id)"
-                         "  VALUES ($1, $2, $3, $4) RETURNING user_id;")
+                query = ("INSERT INTO github_users "
+                         "("
+                         "  github_id, github_username, github_auth_token, user_id, total_cents, month_cents, last_checked"
+                         ") VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING user_id;")
                 new_user_id = await connection.fetchval(
                     query, github_user.github_id, github_user.github_username,
-                    github_user.github_auth_token, user_id)
+                    github_user.github_auth_token, user_id, github_user.amount.total, github_user.amount.month,
+                    github_user.amount.last_checked)
             else:
                 # add or update GitHub user
                 query = (
-                    "INSERT INTO github_users (github_id, github_username, github_auth_token, user_id)"
-                    "  VALUES ($1, $2, $3, COALESCE($4, (SELECT user_id FROM github_users WHERE github_id = $1::VARCHAR))) "
-                    "ON CONFLICT (github_id) DO UPDATE SET "
+                    "INSERT INTO github_users "
+                    "("
+                    "  github_id, github_username, github_auth_token, user_id, total_cents, month_cents, last_checked"
+                    ") VALUES ("
+                    "  $1, $2, $3, COALESCE($4, (SELECT user_id FROM github_users WHERE github_id = $1::VARCHAR)), $5, "
+                    "$6, $7"
+                    ") ON CONFLICT (github_id) DO UPDATE SET "
                     "  github_username = excluded.github_username, "
                     "  github_auth_token = excluded.github_auth_token "
                     "RETURNING user_id;")
                 new_user_id = await connection.fetchval(
                     query, github_user.github_id, github_user.github_username,
-                    github_user.github_auth_token, user_id)
+                    github_user.github_auth_token, user_id, github_user.amount.total, github_user.amount.month,
+                    github_user.amount.last_checked)
             db_username = await self._lookup_username_from_user_id(connection, new_user_id)
             if not new_user_id or not db_username:
                 return None
@@ -108,31 +138,71 @@ class UsersModel:
             if not user_id and not db_user_id:
                 # new user
                 query = ("WITH CONFLICT_USERNAME AS ("
-                         "    SELECT CONCAT($2::VARCHAR, '_', substr(md5(random()::TEXT), 1, 5)) as fixed_username FROM users WHERE username = $2)"
-                         ", NEW_USER AS ("
-                         "    INSERT INTO users (username) VALUES (COALESCE((SELECT fixed_username FROM CONFLICT_USERNAME), $2)) RETURNING user_id, username)"
-                         "INSERT INTO opencollective_users (opencollective_id, opencollective_username, user_id)"
-                         "  VALUES ($1, $2, (SELECT user_id FROM NEW_USER)) RETURNING user_id;")
+                         "  SELECT CONCAT($2::VARCHAR, '_', substr(md5(random()::TEXT), 1, 5)) as fixed_username FROM users WHERE username = $2"
+                         "), NEW_USER AS ("
+                         "  INSERT INTO users (username) VALUES "
+                         "  ("
+                         "    COALESCE((SELECT fixed_username FROM CONFLICT_USERNAME), $2)"
+                         "  ) RETURNING user_id, username"
+                         ")"
+                         "INSERT INTO opencollective_users "
+                         "("
+                         "  opencollective_id, opencollective_username, user_id, total_cents, month_cents, last_checked"
+                         ") VALUES ($1, $2, (SELECT user_id FROM NEW_USER), $3, $4, $5) RETURNING user_id;")
                 new_user_id = await connection.fetchval(
-                    query, opencollective_user.opencollective_id, opencollective_user.opencollective_username)
+                    query, opencollective_user.opencollective_id, opencollective_user.opencollective_username,
+                    opencollective_user.amount.total, opencollective_user.amount.month,
+                    opencollective_user.amount.last_checked)
             elif user_id and db_user_id and user_id != db_user_id:
                 # user already logged in, delete conflicting user and its other associated accounts
                 await connection.execute("DELETE FROM users WHERE user_id = $1;", db_user_id)
-                query = ("INSERT INTO opencollective_users (opencollective_id, opencollective_username, user_id)"
-                         "  VALUES ($1, $2, $3) RETURNING user_id;")
+                query = ("INSERT INTO opencollective_users "
+                         "("
+                         "  opencollective_id, opencollective_username, user_id, total_cents, month_cents, last_checked"
+                         ") VALUES ($1, $2, $3, $4, $5, $6) RETURNING user_id;")
                 new_user_id = await connection.fetchval(
-                    query, opencollective_user.opencollective_id, opencollective_user.opencollective_username, user_id)
+                    query, opencollective_user.opencollective_id, opencollective_user.opencollective_username, user_id,
+                    opencollective_user.amount.total, opencollective_user.amount.month,
+                    opencollective_user.amount.last_checked)
             else:
                 # add or update GitHub user
                 query = (
-                    "INSERT INTO opencollective_users (opencollective_id, opencollective_username, user_id)"
-                    "  VALUES ($1, $2, COALESCE($3, (SELECT user_id FROM opencollective_users WHERE opencollective_id = $1::VARCHAR))) "
-                    "ON CONFLICT (opencollective_id) DO UPDATE SET "
+                    "INSERT INTO opencollective_users "
+                    "("
+                    "  opencollective_id, opencollective_username, user_id, total_cents, month_cents, last_checked"
+                    ") VALUES ("
+                    "  $1, $2, COALESCE($3, (SELECT user_id FROM opencollective_users WHERE opencollective_id = $1::VARCHAR)),"
+                    "  $4, $5, $6"
+                    ") ON CONFLICT (opencollective_id) DO UPDATE SET "
                     "  opencollective_username = excluded.opencollective_username "
                     "RETURNING user_id;")
                 new_user_id = await connection.fetchval(
-                    query, opencollective_user.opencollective_id, opencollective_user.opencollective_username, user_id)
+                    query, opencollective_user.opencollective_id, opencollective_user.opencollective_username, user_id,
+                    opencollective_user.amount.total, opencollective_user.amount.month,
+                    opencollective_user.amount.last_checked)
             db_username = await self._lookup_username_from_user_id(connection, new_user_id)
             if not new_user_id or not db_username:
                 return None
             return User(user_id=new_user_id, username=db_username)
+
+    @staticmethod
+    async def update_github_total_month(github_user: GithubUser, user_id: int):
+        if not github_user:
+            raise ValueError("Must provide an GitHub User to update amounts")
+        async with database.pool.acquire() as connection:
+            query = (
+                "UPDATE github_users SET total_cents = $1, month_cents = $2, last_checked = $3 WHERE user_id = $4;"
+            )
+            await connection.execute(query, github_user.amount.total, github_user.amount.month,
+                                      github_user.amount.last_checked, user_id)
+
+    @staticmethod
+    async def update_opencollective_total_month(opencollective_user: OpencollectiveUser, user_id: int):
+        if not opencollective_user:
+            raise ValueError("Must provide an OpenCollective User to update amounts")
+        async with database.pool.acquire() as connection:
+            query = (
+                "UPDATE opencollective_users SET total_cents = $1, month_cents = $2, last_checked = $3 WHERE user_id = $4;"
+            )
+            await connection.execute(query, opencollective_user.amount.total, opencollective_user.amount.month,
+                                opencollective_user.amount.last_checked, user_id)

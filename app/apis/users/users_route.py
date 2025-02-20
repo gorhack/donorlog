@@ -1,3 +1,6 @@
+from datetime import datetime, timezone
+
+import httpx
 from fastapi import APIRouter, HTTPException, status
 
 from app.apis.github import GithubAPI
@@ -26,18 +29,22 @@ async def search_overview(username: str) -> DisplayUser:
             detail="User does not exist or not verified.",
         )
     try:
-        github_monthly_sponsorship_amount = await (
-            GithubAPI.get_user_sponsorship_amount(user.github_user.github_auth_token)
-        ) if user.github_user else None
-        opencollective_sponsorship_amount = await (
-            OpenCollectiveAPI.get_user_sponsorship_amount(user.opencollective_user.opencollective_id)
-        ) if user.opencollective_user else None
-    except HTTPException:  # TODO catch the right errors
+        if user.github_user and (
+                datetime.now(tz=timezone.utc) - user.github_user.amount.last_checked).days > 0:
+            github_monthly_sponsorship_amount = await GithubAPI.get_user_sponsorship_amount(
+                user.github_user.github_auth_token)
+            user.github_user.amount = github_monthly_sponsorship_amount
+            await UsersModel.update_github_total_month(user.github_user, user.user_id)
+        if user.opencollective_user and (
+                datetime.now(tz=timezone.utc) - user.opencollective_user.amount.last_checked).days > 0:
+            opencollective_sponsorship_amount = await (
+                OpenCollectiveAPI.get_user_sponsorship_amount(user.opencollective_user.opencollective_id)
+            ) if user.opencollective_user else None
+            user.opencollective_user.amount = opencollective_sponsorship_amount
+            await UsersModel.update_opencollective_total_month(user.opencollective_user, user.user_id)
+    except httpx.HTTPError:  # TODO catch the right errors
         raise HTTPException(  # user's stored auth token is invalid
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User does not exist or not verified.",
         )
-    return DisplayUser(
-        username=username,
-        github=github_monthly_sponsorship_amount,
-        opencollective=opencollective_sponsorship_amount)
+    return user.display()

@@ -1,24 +1,19 @@
 import os
-from unittest.mock import patch
 
 import pytest
 
-from app.apis.users.users_model import UsersModel
 from app.apis.users.users_schema import GithubUser, OpencollectiveUser
-from app.apis.users.users_schema import User
-from tests.test_main import async_client
+from tests.test_main import async_client, test_total_and_month, add_users_to_database
 
 
 class TestExternalAPI:
     @pytest.mark.skipif(not os.getenv("GITHUB_GQL_PERSONAL_TOKEN"), reason="Testing Real API")
-    @patch.object(UsersModel, "lookup_user_by_username",
-                  return_value=User(user_id=123,
-                                    username="gorhack",
-                                    github_user=GithubUser(
-                                        github_auth_token=os.getenv("GITHUB_GQL_PERSONAL_TOKEN"),
-                                        github_id="ghid",
-                                        github_username="ghusr")))
-    async def test_github_graphql(self, _, async_client):
+    async def test_github_graphql(self, async_client):
+        await add_users_to_database([(GithubUser(
+            github_auth_token=os.getenv("GITHUB_GQL_PERSONAL_TOKEN"),
+            github_id="ghid",
+            github_username="gorhack",
+            amount=test_total_and_month), None)])
         response = await async_client.get("/users/gorhack")
         assert response.json().get("username") == "gorhack"
         assert response.json().get("github").get("month") is not None
@@ -28,12 +23,11 @@ class TestExternalAPI:
         assert response.status_code == 200
 
     @pytest.mark.skipif(not os.getenv("OPENCOLLECTIVE_USER_ID"), reason="Testing Real API")
-    @patch.object(UsersModel, "lookup_user_by_username",
-                  return_value=User(user_id=123, username="gorhack",
-                                    opencollective_user=OpencollectiveUser(
-                                        opencollective_id=os.getenv("OPENCOLLECTIVE_USER_ID"),
-                                        opencollective_username="gorhack")))
-    async def test_opencollective_graphql(self, _, async_client):
+    async def test_opencollective_graphql(self, async_client):
+        await add_users_to_database([(OpencollectiveUser(
+            opencollective_id=os.getenv("OPENCOLLECTIVE_USER_ID"),
+            opencollective_username="gorhack",
+            amount=test_total_and_month), None)])
         response = await async_client.get("/users/gorhack")
         assert response.json().get("username") == "gorhack"
         assert response.json().get("github") is None

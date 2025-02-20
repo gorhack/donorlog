@@ -168,8 +168,10 @@ async def access_token_from_authorization_code_flow(
         request) else (None, None)
     # TODO: handle errors
     (gh_id, gh_username) = await GithubAPI.get_id_and_username(access_token)
+    total_and_month = await GithubAPI.get_user_sponsorship_amount(access_token)
     user = await UsersModel().insert_or_update_github_user(
-        github_user=GithubUser(github_id=gh_id, github_username=gh_username, github_auth_token=access_token),
+        github_user=GithubUser(github_id=gh_id, github_username=gh_username, github_auth_token=access_token,
+                               amount=total_and_month),
         user_id=user_id)
     if not user:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -223,9 +225,11 @@ async def access_token_from_authorization_code_flow(
     (session_id, user_id) = (request.session.get("session_id"), request.session.get("user_id")) if validate_session(
         request) else (None, None)
     (oc_id, oc_username) = await OpenCollectiveAPI.get_id_and_username(access_token)
+    total_and_month = await OpenCollectiveAPI.get_user_sponsorship_amount(access_token)
     # add opencollective_id to database
     user = await UsersModel().insert_or_update_opencollective_user(
-        opencollective_user=OpencollectiveUser(opencollective_id=oc_id, opencollective_username=oc_username),
+        opencollective_user=OpencollectiveUser(opencollective_id=oc_id, opencollective_username=oc_username,
+                                               amount=total_and_month),
         user_id=user_id)
     if not user:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)

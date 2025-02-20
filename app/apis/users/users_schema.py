@@ -15,20 +15,14 @@ class GithubUser:
     github_id: str
     github_username: str
     github_auth_token: Optional[str]
+    amount: TotalAndMonthAmount
 
 
 @dataclass
 class OpencollectiveUser:
     opencollective_id: str
     opencollective_username: str
-
-
-@dataclass
-class User:
-    user_id: int
-    username: str
-    github_user: Optional[GithubUser] = None
-    opencollective_user: Optional[OpencollectiveUser] = None
+    amount: TotalAndMonthAmount
 
 
 @dataclass
@@ -44,3 +38,18 @@ class DisplayUser:
     def month(self):
         return (getattr(getattr(self, 'github', None), 'month', None) or 0) + (getattr(
             getattr(self, 'opencollective', None), 'month', None) or 0)
+
+
+@dataclass
+class User:
+    user_id: int
+    username: str
+    github_user: Optional[GithubUser] = None
+    opencollective_user: Optional[OpencollectiveUser] = None
+
+    def display(self) -> DisplayUser:
+        return DisplayUser(
+            username=self.username,
+            github=(getattr(getattr(self, 'github_user', None), 'amount', None)),
+            opencollective=(getattr(getattr(self, 'opencollective_user', None), 'amount', None)),
+        )
