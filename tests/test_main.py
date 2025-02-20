@@ -8,8 +8,7 @@ from httpx import AsyncClient, ASGITransport
 from app.apis.github import GithubAPI
 from app.apis.opencollective import OpenCollectiveAPI
 from app.apis.users.users_model import UsersModel
-from app.apis.users.users_schema import GithubUser, OpencollectiveUser, User
-from app.apis.utils import TotalAndMonthAmount
+from app.apis.users.users_schema import GithubUser, OpencollectiveUser, User, TotalAndMonthAmount
 from app.core import migrate
 from app.core.postgres import database
 from app.main import app

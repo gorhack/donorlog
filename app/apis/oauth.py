@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from app.apis.utils import TotalAndMonthAmount
+from app.apis.users.users_schema import TotalAndMonthAmount
 
 
 def start_of_month() -> str:

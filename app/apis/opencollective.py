@@ -6,7 +6,7 @@ import httpx
 from fastapi import status
 
 from app.apis.oauth import OAuth, start_of_month
-from app.apis.utils import TotalAndMonthAmount
+from app.apis.users.users_schema import TotalAndMonthAmount
 from app.core.config import settings
 
 

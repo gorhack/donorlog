@@ -8,11 +8,13 @@ from app.apis.users.users_schema import DisplayUser
 users_router = APIRouter(prefix="/users", tags=["User API"])
 
 
-@users_router.get(
-    "/{username}",
-    response_model=DisplayUser,
-)
-async def search_overview(username: str):
+@users_router.get("/{username}",
+                  responses={
+                      status.HTTP_404_NOT_FOUND: {
+                          "description": "User does not exist or not verified."},
+                      status.HTTP_200_OK: {"model": DisplayUser}
+                  })
+async def search_overview(username: str) -> DisplayUser:
     """
     Search for arbitrary user.
     If the user exists in the application, return their sponsorship amounts.
