@@ -39,6 +39,11 @@ class DisplayUser:
         return (getattr(getattr(self, 'github', None), 'month', None) or 0) + (getattr(
             getattr(self, 'opencollective', None), 'month', None) or 0)
 
+    def last_checked_str(self):
+        return max(getattr(getattr(self, 'github', datetime.min), 'last_checked', datetime.min).date(),
+                   getattr(getattr(self, 'opencollective', datetime.min), 'last_checked',
+                           datetime.min).date()).strftime("%b %d, %y")
+
 
 @dataclass
 class User:

@@ -1,3 +1,4 @@
+import copy
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from unittest.mock import patch, PropertyMock
@@ -95,6 +96,7 @@ class TestHome:
         mock_get_user_sponsorship_amount.assert_called_once_with(test_user_1_github.github_auth_token)
         assert "Monthly Amount: $11.22" in response.text
         assert "Total Amount: $33.44" in response.text
+        assert "Last Updated: Jan 01, 25" in response.text
         assert "Link OpenCollective" in response.text
         assert "Linked GitHub" in response.text
 
@@ -130,18 +132,23 @@ class TestHome:
         mock_get_user_sponsorship_amount.assert_called_once_with(test_user_1_opencollective.opencollective_id)
         assert "Monthly Amount: $11.22" in response.text
         assert "Total Amount: $33.44" in response.text
+        assert "Last Updated: Jan 01, 25" in response.text
         assert "Link GitHub" in response.text
         assert "Linked OpenCollective" in response.text
 
     @patch.object(GithubAPI, "get_user_sponsorship_amount", return_value=test_total_and_month)
-    @patch.object(OpenCollectiveAPI, "get_user_sponsorship_amount", return_value=test_total_and_month)
-    async def test_get_home_github_and_opencollective(self, mock_get_user_sponsorship_amount, _,
+    @patch.object(OpenCollectiveAPI, "get_user_sponsorship_amount")
+    async def test_get_home_github_and_opencollective(self, mock_oc_get_user_sponsorship_amount, _,
                                                       async_client_with_logged_in_user):
-        await add_users_to_database([(test_user_1_opencollective, 1)])
+        update_oc_date = copy.deepcopy(test_user_1_opencollective)
+        update_oc_date.amount.last_checked = datetime.fromisoformat("2025-01-05 00:01:45+00:00")
+        await add_users_to_database([(update_oc_date, 1)])
+        mock_oc_get_user_sponsorship_amount.return_value = update_oc_date.amount
         response = await async_client_with_logged_in_user.get("/")
         assert response.status_code == 200
-        mock_get_user_sponsorship_amount.assert_called_once_with("oc_id_1")
+        mock_oc_get_user_sponsorship_amount.assert_called_once_with("oc_id_1")
         assert "Linked OpenCollective" in response.text
         assert "Linked GitHub" in response.text
         assert "Total Amount: $66.88" in response.text
         assert "Monthly Amount: $22.44" in response.text
+        assert "Last Updated: Jan 05, 25" in response.text

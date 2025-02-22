@@ -5,11 +5,11 @@ from fastapi import status
 
 from app.apis.github import GithubAPI
 from app.apis.opencollective import OpenCollectiveAPI
+from app.apis.users.users_model import UsersModel
 from app.apis.users.users_schema import GithubUser, OpencollectiveUser
 from app.apis.users.users_schema import TotalAndMonthAmount
-from tests.test_main import add_users_to_database, test_user_1_github, test_user_1_opencollective
-from tests.test_main import async_client, test_total_and_month
-from users.users_model import UsersModel
+from tests.test_main import add_users_to_database, test_user_1_github, test_user_1_opencollective, async_client, \
+    test_total_and_month
 
 
 class TestGithubUsers:
