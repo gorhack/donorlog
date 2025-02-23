@@ -1,4 +1,5 @@
 import copy
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from unittest.mock import patch, PropertyMock
@@ -152,3 +153,76 @@ class TestHome:
         assert "Total Amount: $66.88" in response.text
         assert "Monthly Amount: $22.44" in response.text
         assert "Last Updated: Jan 05, 25" in response.text
+
+    async def test_ranked_totals(self, async_client):
+        user1 = copy.deepcopy(test_user_1_github)
+        user1.amount.total = 1000
+        user1.github_username = user1.github_id = "user1_1000"
+
+        user2_oc = copy.deepcopy(test_user_1_opencollective)
+        user2_oc.amount.total = 500
+        user2_oc.opencollective_username = user2_oc.opencollective_id = "user2_999"
+        user2_gh = copy.deepcopy(test_user_1_github)
+        user2_gh.amount.total = 499
+        user2_gh.github_id = "user2_999"
+
+        user2_3 = copy.deepcopy(test_user_1_opencollective)
+        user2_3.amount.total = 999
+        user2_3.opencollective_username = user2_3.opencollective_id = "user2_oc_only_999"
+
+        user2_3_oc = copy.deepcopy(test_user_1_opencollective)
+        user2_3_oc.amount.total = 499
+        user2_3_oc.opencollective_id = "user_2_3_999"
+        user2_3_gh = copy.deepcopy(test_user_1_github)
+        user2_3_gh.amount.total = 500
+        user2_3_gh.github_username = user2_3_gh.github_id = "user_2_3_999"
+
+        user5 = copy.deepcopy(test_user_1_github)
+        user5.amount.total = 998
+        user5.github_username = user5.github_id = "user5_998"
+
+        user6 = copy.deepcopy(test_user_1_opencollective)
+        user6.amount.total = 997
+        user6.opencollective_username = user6.opencollective_id = "user6_997"
+
+        user7 = copy.deepcopy(test_user_1_github)
+        user7.amount.total = 996
+        user7.github_username = user7.github_id = "user7_996"
+
+        user8 = copy.deepcopy(test_user_1_opencollective)
+        user8.amount.total = 900
+        user8.opencollective_username = user8.opencollective_id = "user8_900"
+
+        user9 = copy.deepcopy(test_user_1_github)
+        user9.amount.total = 800
+        user9.github_username = user9.github_id = "user9_800"
+
+        user10_oc = copy.deepcopy(test_user_1_opencollective)
+        user10_oc.amount.total = 798
+        user10_oc.opencollective_id = "user10_799"
+        user10_gh = copy.deepcopy(test_user_1_github)
+        user10_gh.amount.total = 1
+        user10_gh.github_username = user10_gh.github_id = "user10_799"
+
+        user11 = copy.deepcopy(test_user_1_github)
+        user11.amount.total = 798
+        user11.github_username = user11.github_id = "user11_798"
+
+        await add_users_to_database(
+            [(user10_oc, None), (user10_gh, 1), (user2_oc, None), (user2_gh, 2), (user2_3_gh, None), (user2_3_oc, 3),
+             (user2_3, None), (user11, None), (user9, None), (user5, None), (user8, None), (user6, None), (user7, None),
+             (user1, None)])
+        response = await async_client.get("/")
+        assert re.search((
+                   "<td>user1_1000</td>.*"
+                   "<td>user2_999</td>.*"
+                   "<td>user2_oc_only_999</td>.*"
+                   "<td>user_2_3_999</td>.*"
+                   "<td>user5_998</td>.*"
+                   "<td>user6_997</td>.*"
+                   "<td>user7_996</td>.*"
+                   "<td>user8_900</td>.*"
+                   "<td>user9_800</td>.*"
+                   "<td>user10_799</td>"
+               ), response.text, re.DOTALL)
+        assert "user11_798" not in response.text
