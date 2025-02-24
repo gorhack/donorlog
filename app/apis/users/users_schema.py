@@ -58,3 +58,9 @@ class User:
             github=(getattr(getattr(self, 'github_user', None), 'amount', None)),
             opencollective=(getattr(getattr(self, 'opencollective_user', None), 'amount', None)),
         )
+
+@dataclass
+class RankedUsers:
+    rank: int
+    username: str
+    amount: int

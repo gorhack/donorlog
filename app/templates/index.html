@@ -6,30 +6,68 @@
 </head>
 <body>
 {% if not user %}
-<form action="/login/github" method="get"><input type="submit" value="Login with GitHub"/></form>
-<form action="/login/opencollective" method="get"><input type="submit" value="Login with OpenCollective"/></form>
+    <form action="/login/github" method="get"><input type="submit" value="Login with GitHub"/></form>
+    <form action="/login/opencollective" method="get"><input type="submit" value="Login with OpenCollective"/></form>
 {% else %}
-<p>Username: {{ user.username }}</p>
-<p>Monthly Amount: ${{ "%.2f" % (user.month() / 100) }}</p>
-<p>Total Amount: ${{ "%.2f" % (user.total() / 100) }}</p>
-{% if not user.opencollective %}
-<form action="/login/opencollective" method="get">
-    <input type="submit" value="Link OpenCollective"/>
-</form>
-{% else %}
-<p>Linked OpenCollective</p>
+    <p>Username: {{ user.username }}</p>
+    <p>Monthly Amount: ${{ "%.2f" % (user.month() / 100) }}</p>
+    <p>Total Amount: ${{ "%.2f" % (user.total() / 100) }}</p>
+    {% if not user.opencollective %}
+        <form action="/login/opencollective" method="get">
+            <input type="submit" value="Link OpenCollective"/>
+        </form>
+    {% else %}
+        <p>Linked OpenCollective</p>
+    {% endif %}
+    {% if not user.github %}
+        <form action="/login/github" method="get">
+            <input type="submit" value="Link GitHub"/>
+        </form>
+    {% else %}
+        <p>Linked GitHub</p>
+    {% endif %}
+    <form action="/logout" method="get">
+        <input type="submit" value="logout">
+    </form>
+    <p>Last Updated: {{ user.last_checked_str() }}</p>
 {% endif %}
-{% if not user.github %}
-<form action="/login/github" method="get">
-    <input type="submit" value="Link GitHub"/>
-</form>
-{% else %}
-<p>Linked GitHub</p>
-{% endif %}
-<form action="/logout" method="get">
-    <input type="submit" value="logout">
-</form>
-<p>Last Updated: {{ user.last_checked_str() }}</p>
-{% endif %}
+<table>
+    <caption>Total Rankings</caption>
+    <thead>
+        <tr>
+            <th>Rank</th>
+            <th>Username</th>
+            <th>Total Amount</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for user in ranked_total %}
+            <tr>
+                <td>{{user.rank}}</td>
+                <td>{{user.username}}</td>
+                <td>${{ "%.2f" % (user.amount / 100) }}</td>
+            </tr>
+        {% endfor %}
+    </tbody>
+</table>
+<table>
+    <caption>Month Rankings</caption>
+    <thead>
+        <tr>
+            <th>Rank</th>
+            <th>Username</th>
+            <th>Total Amount</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for user in ranked_month %}
+            <tr>
+                <td>{{user.rank}}</td>
+                <td>{{user.username}}</td>
+                <td>${{ "%.2f" % (user.amount / 100) }}</td>
+            </tr>
+        {% endfor %}
+    </tbody>
+</table>
 </body>
 </html>
