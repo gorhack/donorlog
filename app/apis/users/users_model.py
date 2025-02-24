@@ -2,9 +2,7 @@ from typing import Optional
 
 from asyncpg.pool import Pool
 
-from app.apis.users.users_schema import GithubUser
-from app.apis.users.users_schema import TotalAndMonthAmount
-from app.apis.users.users_schema import User, OpencollectiveUser
+from app.apis.users.users_schema import User, OpencollectiveUser, GithubUser, TotalAndMonthAmount, RankedUsers
 from app.core.postgres import database
 
 
@@ -194,7 +192,7 @@ class UsersModel:
                 "UPDATE github_users SET total_cents = $1, month_cents = $2, last_checked = $3 WHERE user_id = $4;"
             )
             await connection.execute(query, github_user.amount.total, github_user.amount.month,
-                                      github_user.amount.last_checked, user_id)
+                                     github_user.amount.last_checked, user_id)
 
     @staticmethod
     async def update_opencollective_total_month(opencollective_user: OpencollectiveUser, user_id: int):
@@ -205,4 +203,31 @@ class UsersModel:
                 "UPDATE opencollective_users SET total_cents = $1, month_cents = $2, last_checked = $3 WHERE user_id = $4;"
             )
             await connection.execute(query, opencollective_user.amount.total, opencollective_user.amount.month,
-                                opencollective_user.amount.last_checked, user_id)
+                                     opencollective_user.amount.last_checked, user_id)
+
+    @staticmethod
+    async def ranked_totals(max_num: int = 10) -> list[RankedUsers]:
+        users = []
+        async with database.pool.acquire() as connection:
+            results = await connection.fetch(
+                "SELECT total_rank, username, total_cents FROM ranked_users_view ORDER BY total_rank, username LIMIT $1;",
+                max_num)
+            for row in results:
+                users.append(RankedUsers(rank=row.get("total_rank"), username=row.get("username"), amount=row.get("total_cents")))
+        return users
+
+    @staticmethod
+    async def ranked_months(max_num: int = 10) -> list[RankedUsers]:
+        users = []
+        async with database.pool.acquire() as connection:
+            results = await connection.fetch(
+                "SELECT month_rank, username, month_cents FROM ranked_users_view ORDER BY month_rank, username LIMIT $1;",
+                max_num)
+            for row in results:
+                users.append(RankedUsers(rank=row.get("month_rank"), username=row.get("username"), amount=row.get("month_cents")))
+        return users
+
+    @staticmethod
+    async def update_ranked_users_view():
+        async with database.pool.acquire() as connection:
+            await connection.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY ranked_users_view;")

@@ -1,3 +1,4 @@
+import logging
 import os
 
 
@@ -26,6 +27,9 @@ class Settings:
     OPENCOLLECTIVE_GRAPHQL_API_URL = "https://opencollective.com/api/graphql/v2"
 
     SESSION_SECRET = os.getenv("SESSION_SECRET")
+
+    LOG = logging.getLogger('uvicorn')
+    LOG.setLevel(level=logging.DEBUG if DEBUG else logging.INFO)
 
 
 settings = Settings()

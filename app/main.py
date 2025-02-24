@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import hashlib
 import secrets
@@ -21,10 +22,20 @@ from app.core.postgres import database
 from app.session.session_layer import validate_session
 
 
+async def update_ranked_users_view(interval: int = 60):
+    # Ranked users view must get updated periodically or the results will be stale
+    # Total and monthly rankings will only be out-of-date as long as the interval, in seconds.
+    while True:
+        await UsersModel.update_ranked_users_view()
+        settings.LOG.debug("Updated ranked users view.")
+        await asyncio.sleep(interval)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await database.connect()
     await migrate.apply_pending_migrations()
+    asyncio.create_task(update_ranked_users_view())
     yield
     await database.disconnect()
 
@@ -54,11 +65,15 @@ async def root(
             display_user = await search_overview(request.session.get("username"))
         except HTTPException:
             request.session.clear()
+    ranked_total = await UsersModel.ranked_totals(max_num=10)
+    ranked_month = await UsersModel.ranked_months(max_num=10)
     return templates.TemplateResponse(
         request=request,
         name="index.html",
         context={
             "user": display_user,
+            "ranked_total": ranked_total,
+            "ranked_month": ranked_month,
             "request": request,
         },
     )

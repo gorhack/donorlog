@@ -27,7 +27,6 @@ async def async_client():
     async with database.pool.acquire() as connection:
         await connection.execute(query)
     await migrate.apply_pending_migrations()
-
     async with AsyncClient(
             transport=ASGITransport(app=app), base_url="http://test"
     ) as ac:
@@ -47,6 +46,7 @@ async def add_users_to_database(user_userid: [(GithubUser | OpencollectiveUser, 
 
         if isinstance(user[0], GithubUser):
             added_users.append(await UsersModel().insert_or_update_github_user(user[0], user[1]))
+    await UsersModel.update_ranked_users_view()
     return added_users
 
 
@@ -154,58 +154,72 @@ class TestHome:
         assert "Monthly Amount: $22.44" in response.text
         assert "Last Updated: Jan 05, 25" in response.text
 
-    async def test_ranked_totals(self, async_client):
+    async def test_ranked_total_and_month(self, async_client):
         user1 = copy.deepcopy(test_user_1_github)
         user1.amount.total = 1000
-        user1.github_username = user1.github_id = "user1_1000"
+        user1.amount.month = 799
+        user1.github_username = user1.github_id = "user1_1000_799"
 
         user2_oc = copy.deepcopy(test_user_1_opencollective)
         user2_oc.amount.total = 500
-        user2_oc.opencollective_username = user2_oc.opencollective_id = "user2_999"
+        user2_oc.amount.month = 400
+        user2_oc.opencollective_username = user2_oc.opencollective_id = "user2_999_800"
         user2_gh = copy.deepcopy(test_user_1_github)
         user2_gh.amount.total = 499
-        user2_gh.github_id = "user2_999"
+        user2_gh.amount.month = 400
+        user2_gh.github_id = "user2_999_800"
 
         user2_3 = copy.deepcopy(test_user_1_opencollective)
         user2_3.amount.total = 999
-        user2_3.opencollective_username = user2_3.opencollective_id = "user2_oc_only_999"
+        user2_3.amount.month = 990
+        user2_3.opencollective_username = user2_3.opencollective_id = "user2_oc_only_999_990"
 
         user2_3_oc = copy.deepcopy(test_user_1_opencollective)
         user2_3_oc.amount.total = 499
-        user2_3_oc.opencollective_id = "user_2_3_999"
+        user2_3_oc.amount.month = 994
+        user2_3_oc.opencollective_id = "user_2_3_999_995"
         user2_3_gh = copy.deepcopy(test_user_1_github)
         user2_3_gh.amount.total = 500
-        user2_3_gh.github_username = user2_3_gh.github_id = "user_2_3_999"
+        user2_3_gh.amount.month = 1
+        user2_3_gh.github_username = user2_3_gh.github_id = "user_2_3_999_995"
 
         user5 = copy.deepcopy(test_user_1_github)
         user5.amount.total = 998
-        user5.github_username = user5.github_id = "user5_998"
+        user5.amount.month = 996
+        user5.github_username = user5.github_id = "user5_998_996"
 
         user6 = copy.deepcopy(test_user_1_opencollective)
         user6.amount.total = 997
+        user6.amount.month = 997
         user6.opencollective_username = user6.opencollective_id = "user6_997"
 
         user7 = copy.deepcopy(test_user_1_github)
         user7.amount.total = 996
-        user7.github_username = user7.github_id = "user7_996"
+        user7.amount.month = 998
+        user7.github_username = user7.github_id = "user7_996_998"
 
         user8 = copy.deepcopy(test_user_1_opencollective)
         user8.amount.total = 900
-        user8.opencollective_username = user8.opencollective_id = "user8_900"
+        user8.amount.month = 999
+        user8.opencollective_username = user8.opencollective_id = "user8_900_999"
 
         user9 = copy.deepcopy(test_user_1_github)
         user9.amount.total = 800
-        user9.github_username = user9.github_id = "user9_800"
+        user9.amount.month = 999
+        user9.github_username = user9.github_id = "user9_800_999"
 
         user10_oc = copy.deepcopy(test_user_1_opencollective)
         user10_oc.amount.total = 798
-        user10_oc.opencollective_id = "user10_799"
+        user10_oc.amount.month = 999
+        user10_oc.opencollective_username = user10_oc.opencollective_id = "user10_799_1000"
         user10_gh = copy.deepcopy(test_user_1_github)
         user10_gh.amount.total = 1
-        user10_gh.github_username = user10_gh.github_id = "user10_799"
+        user10_gh.amount.month = 1
+        user10_gh.github_id = "user10_799_1000"
 
         user11 = copy.deepcopy(test_user_1_github)
         user11.amount.total = 798
+        user11.amount.month = 798
         user11.github_username = user11.github_id = "user11_798"
 
         await add_users_to_database(
@@ -214,15 +228,27 @@ class TestHome:
              (user1, None)])
         response = await async_client.get("/")
         assert re.search((
-                   "<td>user1_1000</td>.*"
-                   "<td>user2_999</td>.*"
-                   "<td>user2_oc_only_999</td>.*"
-                   "<td>user_2_3_999</td>.*"
-                   "<td>user5_998</td>.*"
-                   "<td>user6_997</td>.*"
-                   "<td>user7_996</td>.*"
-                   "<td>user8_900</td>.*"
-                   "<td>user9_800</td>.*"
-                   "<td>user10_799</td>"
-               ), response.text, re.DOTALL)
+            "<td>user1_1000_799</td>.*"
+            "<td>user2_999_800</td>.*"
+            "<td>user2_oc_only_999_990</td>.*"
+            "<td>user_2_3_999_995</td>.*"
+            "<td>user5_998_996</td>.*"
+            "<td>user6_997</td>.*"
+            "<td>user7_996_998</td>.*"
+            "<td>user8_900_999</td>.*"
+            "<td>user9_800_999</td>.*"
+            "<td>user10_799_1000</td>"
+        ), response.text, re.DOTALL)
+        assert re.search((
+            "<td>user10_799_1000</td>.*"
+            "<td>user8_900_999</td>.*"
+            "<td>user9_800_999</td>.*"
+            "<td>user7_996_998</td>.*"
+            "<td>user6_997</td>.*"
+            "<td>user5_998_996</td>.*"
+            "<td>user_2_3_999_995</td>.*"
+            "<td>user2_oc_only_999_990</td>.*"
+            "<td>user2_999_800</td>.*"
+            "<td>user1_1000_799</td>"
+        ), response.text, re.DOTALL)
         assert "user11_798" not in response.text
