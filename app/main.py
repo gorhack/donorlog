@@ -67,11 +67,13 @@ async def root(
             request.session.clear()
     ranked_total = await UsersModel.ranked_totals(max_num=10)
     ranked_month = await UsersModel.ranked_months(max_num=10)
+    date = datetime.now(tz=timezone.utc).strftime("%B %Y")
     return templates.TemplateResponse(
         request=request,
         name="index.html",
         context={
             "user": display_user,
+            "date": date,
             "ranked_total": ranked_total,
             "ranked_month": ranked_month,
             "request": request,
