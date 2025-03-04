@@ -11,7 +11,9 @@
 {% else %}
     <p>Username: {{ user.username }}</p>
     <p>Monthly Amount: ${{ "%.2f" % (user.month() / 100) }}</p>
+    <p>{{ date }} Rank: {{ month_rank }} of {{ total }}</p>
     <p>Total Amount: ${{ "%.2f" % (user.total() / 100) }}</p>
+    <p>Total Rank: {{ total_rank }} of {{ total }}</p>
     {% if not user.opencollective %}
         <form action="/login/opencollective" method="get">
             <input type="submit" value="Link OpenCollective"/>
