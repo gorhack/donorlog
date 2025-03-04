@@ -231,3 +231,29 @@ class UsersModel:
     async def update_ranked_users_view():
         async with database.pool.acquire() as connection:
             await connection.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY ranked_users_view;")
+
+    @staticmethod
+    async def user_rank_and_total_rankings(username, total_amount, month_amount) -> (int, int, int):
+        if not username or not total_amount or not month_amount:
+            return -1, -1, -1
+        async with database.pool.acquire() as connection:
+            result = await connection.fetchrow("""
+                WITH R AS (SELECT total_rank
+                           FROM ranked_users_view
+                           ORDER BY total_rank DESC
+                           LIMIT 1)
+                SELECT coalesce((SELECT month_rank from ranked_users_view WHERE username = $1),
+                                1 + coalesce((SELECT ranked_users_view.month_rank
+                                              FROM ranked_users_view
+                                              WHERE ranked_users_view.month_cents > $3
+                                              ORDER BY ranked_users_view.month_rank DESC
+                                              LIMIT 1), 0))       AS month_rank,
+                       coalesce((SELECT total_rank from ranked_users_view WHERE username = $1),
+                                ((1 + coalesce((SELECT ranked_users_view.total_rank
+                                                FROM ranked_users_view
+                                                WHERE ranked_users_view.total_cents > $2
+                                                ORDER BY ranked_users_view.total_rank DESC
+                                                LIMIT 1), 0))))   AS total_rank,
+                       coalesce((SELECT (SELECT R.total_rank FROM R) from ranked_users_view WHERE username = $1),
+                                (SELECT R.total_rank + 1 FROM R)) AS total;""", username, total_amount, month_amount)
+            return result.get("total_rank"), result.get("month_rank"), result.get("total")

@@ -100,6 +100,7 @@ class TestHome:
         assert "Last Updated: Jan 01, 2025" in response.text
         assert "Link OpenCollective" in response.text
         assert "Linked GitHub" in response.text
+        assert "Total Rank: 1 of 1" in response.text
 
     @patch("fastapi.Request.session", new_callable=PropertyMock, return_value={
         "session_id": "test_session_id",
