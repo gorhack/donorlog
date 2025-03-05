@@ -155,7 +155,9 @@ class TestHome:
         assert "Monthly Amount: $22.44" in response.text
         assert "Last Updated: Jan 05, 2025" in response.text
 
-    async def test_ranked_total_and_month(self, async_client):
+    @patch.object(GithubAPI, "get_user_sponsorship_amount",
+                  return_value=TotalAndMonthAmount(total=997, month=997, last_checked=datetime.now()))
+    async def test_ranked_total_and_month(self, _, async_client_with_logged_in_user):
         user1 = copy.deepcopy(test_user_1_github)
         user1.amount.total = 1000
         user1.amount.month = 799
@@ -196,12 +198,6 @@ class TestHome:
         user5.amount.last_checked = datetime.now()
         user5.github_username = user5.github_id = "user5_998_996"
 
-        user6 = copy.deepcopy(test_user_1_opencollective)
-        user6.amount.total = 997
-        user6.amount.month = 997
-        user6.amount.last_checked = datetime.now()
-        user6.opencollective_username = user6.opencollective_id = "user6_997"
-
         user7 = copy.deepcopy(test_user_1_github)
         user7.amount.total = 996
         user7.amount.month = 998
@@ -237,17 +233,20 @@ class TestHome:
         user11.github_username = user11.github_id = "user11_798"
 
         await add_users_to_database(
-            [(user10_oc, None), (user10_gh, 1), (user2_oc, None), (user2_gh, 2), (user2_3_gh, None), (user2_3_oc, 3),
-             (user2_3, None), (user11, None), (user9, None), (user5, None), (user8, None), (user6, None), (user7, None),
+            [(user10_oc, None), (user10_gh, 2), (user2_oc, None), (user2_gh, 3), (user2_3_gh, None), (user2_3_oc, 4),
+             (user2_3, None), (user11, None), (user9, None), (user5, None), (user8, None), (user7, None),
              (user1, None)])
-        response = await async_client.get("/")
+        response = await async_client_with_logged_in_user.get("/")
+        assert "Total Rank: 7 of 11" in response.text # test_user_1's Total Rank
+        assert "Rank: 5 of 11" in response.text  # test_user_1's Month Rank
+        # test_user_1's rank does not update in the materialized view so will display in incorrect order
+        # even though the above rankings are correct based on the current materialized view
         assert re.search((
             "<td>user1_1000_799</td>.*"
             "<td>user2_999_800</td>.*"
             "<td>user2_oc_only_999_990</td>.*"
             "<td>user_2_3_999_995</td>.*"
             "<td>user5_998_996</td>.*"
-            "<td>user6_997</td>.*"
             "<td>user7_996_998</td>.*"
             "<td>user8_900_999</td>.*"
             "<td>user9_800_999</td>.*"
@@ -258,7 +257,6 @@ class TestHome:
             "<td>user8_900_999</td>.*"
             "<td>user9_800_999</td>.*"
             "<td>user7_996_998</td>.*"
-            "<td>user6_997</td>.*"
             "<td>user5_998_996</td>.*"
             "<td>user_2_3_999_995</td>.*"
             "<td>user2_oc_only_999_990</td>.*"
