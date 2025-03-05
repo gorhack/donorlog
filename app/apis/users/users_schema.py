@@ -9,6 +9,17 @@ class TotalAndMonthAmount:
     total: int
     last_checked: datetime
 
+@dataclass
+class UserRank:
+    month_rank: int
+    total_rank: int
+    total: int
+    def __post_init__(self):
+        if self.month_rank > self.total:
+            self.month_rank = self.total
+        if self.total_rank > self.total:
+            self.total_rank = self.total
+
 
 @dataclass
 class GithubUser:

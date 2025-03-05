@@ -60,13 +60,11 @@ async def root(
         is_valid_session: bool = Depends(validate_session),
 ):
     display_user = None
-    total_rank = month_rank = total = 0
+    rank = None
     if is_valid_session:
         try:
             display_user = await search_overview(request.session.get("username"))
-            (total_rank, month_rank, total) = await UsersModel.user_rank_and_total_rankings(display_user.username,
-                                                                                            display_user.total(),
-                                                                                            display_user.month())
+            rank = await UsersModel.ranking_for_amount(display_user.month(), display_user.total())
         except HTTPException:
             request.session.clear()
     ranked_total = await UsersModel.ranked_totals(max_num=10)
@@ -77,9 +75,7 @@ async def root(
         name="index.html",
         context={
             "user": display_user,
-            "total_rank": total_rank,
-            "month_rank": month_rank,
-            "total": total,
+            "rank": rank,
             "date": date,
             "ranked_total": ranked_total,
             "ranked_month": ranked_month,

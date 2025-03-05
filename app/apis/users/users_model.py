@@ -2,7 +2,7 @@ from typing import Optional
 
 from asyncpg.pool import Pool
 
-from app.apis.users.users_schema import User, OpencollectiveUser, GithubUser, TotalAndMonthAmount, RankedUsers
+from app.apis.users.users_schema import User, OpencollectiveUser, GithubUser, TotalAndMonthAmount, RankedUsers, UserRank
 from app.core.postgres import database
 
 
@@ -213,7 +213,8 @@ class UsersModel:
                 "SELECT total_rank, username, total_cents FROM ranked_users_view ORDER BY total_rank, username LIMIT $1;",
                 max_num)
             for row in results:
-                users.append(RankedUsers(rank=row.get("total_rank"), username=row.get("username"), amount=row.get("total_cents")))
+                users.append(RankedUsers(rank=row.get("total_rank"), username=row.get("username"),
+                                         amount=row.get("total_cents")))
         return users
 
     @staticmethod
@@ -224,7 +225,8 @@ class UsersModel:
                 "SELECT month_rank, username, month_cents FROM ranked_users_view ORDER BY month_rank, username LIMIT $1;",
                 max_num)
             for row in results:
-                users.append(RankedUsers(rank=row.get("month_rank"), username=row.get("username"), amount=row.get("month_cents")))
+                users.append(RankedUsers(rank=row.get("month_rank"), username=row.get("username"),
+                                         amount=row.get("month_cents")))
         return users
 
     @staticmethod
@@ -233,27 +235,22 @@ class UsersModel:
             await connection.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY ranked_users_view;")
 
     @staticmethod
-    async def user_rank_and_total_rankings(username, total_amount, month_amount) -> (int, int, int):
-        if not username or not total_amount or not month_amount:
-            return -1, -1, -1
+    async def ranking_for_amount(month_amount: int, total_amount: int) -> UserRank:
+        if total_amount is None or month_amount is None:
+            return UserRank(total_rank=-1, month_rank=-1, total=-1)
         async with database.pool.acquire() as connection:
             result = await connection.fetchrow("""
-                WITH R AS (SELECT total_rank
-                           FROM ranked_users_view
-                           ORDER BY total_rank DESC
-                           LIMIT 1)
-                SELECT coalesce((SELECT month_rank from ranked_users_view WHERE username = $1),
-                                1 + coalesce((SELECT ranked_users_view.month_rank
-                                              FROM ranked_users_view
-                                              WHERE ranked_users_view.month_cents > $3
-                                              ORDER BY ranked_users_view.month_rank DESC
-                                              LIMIT 1), 0))       AS month_rank,
-                       coalesce((SELECT total_rank from ranked_users_view WHERE username = $1),
-                                ((1 + coalesce((SELECT ranked_users_view.total_rank
-                                                FROM ranked_users_view
-                                                WHERE ranked_users_view.total_cents > $2
-                                                ORDER BY ranked_users_view.total_rank DESC
-                                                LIMIT 1), 0))))   AS total_rank,
-                       coalesce((SELECT (SELECT R.total_rank FROM R) from ranked_users_view WHERE username = $1),
-                                (SELECT R.total_rank + 1 FROM R)) AS total;""", username, total_amount, month_amount)
-            return result.get("total_rank"), result.get("month_rank"), result.get("total")
+                SELECT 1 + coalesce((SELECT ranked_users_view.month_rank
+                     FROM ranked_users_view
+                     WHERE ranked_users_view.month_cents > $1
+                     ORDER BY ranked_users_view.month_rank DESC
+                     LIMIT 1), 0) AS month_rank,
+                1 + coalesce((SELECT ranked_users_view.total_rank
+                     FROM ranked_users_view
+                     WHERE ranked_users_view.total_cents > $2
+                     ORDER BY ranked_users_view.total_rank DESC
+                     LIMIT 1), 0) AS total_rank,
+                (SELECT total_rank FROM ranked_users_view ORDER BY total_rank DESC LIMIT 1) AS total;""",
+                                               month_amount, total_amount)
+            return UserRank(total_rank=result.get("total_rank"), month_rank=result.get("month_rank"),
+                            total=result.get("total"))
