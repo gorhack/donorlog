@@ -21,12 +21,14 @@ application will do the following:
 3) Identify projects worthy of support (i.e. many users with small amounts or large amounts but few total users)
 4) Determine a project to donate $X each month based on #3
 
-### Roadmap:
+### [Roadmap](https://github.com/users/gorhack/projects/1):
 
-- [ ] GitHub API to identify users and projects and the total monthly contributions
-- [ ] Maintain database that stores references to users and projects and the monthly donation totals
-- [ ] OpenCollective API to identify users and projects and the monthly contributions
+- [x] GitHub API to identify user's total and monthly contributions
+- [x] Maintain database that stores references to user's total and monthly donations
+- [x] OpenCollective API to identify user's total and monthly contributions
+- [ ] Display the projects or users a user contributers towards
 - [ ] Public badge or identifier highlighting contribution tier
+- [ ] Add other [platforms](https://github.com/users/gorhack/projects/1?pane=issue&itemId=96151878)
 - [ ] Monthly rollup of users and projects
 - [ ] Determine project selection for $X donation each month
 
@@ -57,3 +59,12 @@ application will do the following:
 ### Testing
 
 - `pytest`
+
+### Privacy Policy
+
+This application uses OAuth for GitHub and OpenCollective to link your accounts. The scope requested is '', which is read-only public information. 
+The database stores the following:
+- Linked account usernames
+- GitHub OAuth private key
+- The total and current month amount sponsored or contributed for each linked account
+- Date each linked accountw as last checked 
