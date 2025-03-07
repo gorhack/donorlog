@@ -236,6 +236,12 @@ class UsersModel:
 
     @staticmethod
     async def ranking_for_amount(month_amount: int, total_amount: int) -> UserRank:
+        # When a user first logs in, they will be in the `ranked_users_view` so cannot find by name
+        # Results will be out of date by up to 1 minute
+        # Results will not be perfect with ties in ranking due to `rank` instead of `dense_rank`
+        # and this query will return 1+ the ranking directly less than them
+        # i.e if 2 users are ranked #2, the next ranking is #4. A user that would also be tied at #2
+        # will actually display #3 with this query
         if total_amount is None or month_amount is None:
             return UserRank(total_rank=-1, month_rank=-1, total=-1)
         async with database.pool.acquire() as connection:
