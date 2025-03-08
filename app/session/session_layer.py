@@ -1,7 +1,8 @@
-import logging
 from datetime import datetime, timezone
 
 from fastapi import Request
+
+from app.core.config import settings
 
 
 def is_token_expired(unix_timestamp: int) -> bool:
@@ -19,11 +20,11 @@ def validate_session(request: Request) -> bool:
     token_exp = request.session.get('token_expiry')
 
     if not session_id:
-        logging.info("Invalid Session Id")
+        settings.LOG.debug(f"Invalid Session Id: {request.session.get("username")}")
         return False
 
     if is_token_expired(token_exp):
-        logging.info("Access_token is expired, redirecting to login")
+        settings.LOG.debug(f"Access_token is expired, redirecting to login: {request.session.get("username")}")
         return False
 
     return True

@@ -4,11 +4,9 @@ import hashlib
 import secrets
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
 from fastapi import FastAPI, Request, HTTPException, status, Depends
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.apis.github import GithubAPI
@@ -17,8 +15,9 @@ from app.apis.users.users_model import UsersModel
 from app.apis.users.users_route import users_router, search_overview
 from app.apis.users.users_schema import GithubUser, OpencollectiveUser
 from app.core import migrate
-from app.core.config import settings
+from app.core.config import settings, templates
 from app.core.postgres import database
+from app.profile import profile_router
 from app.session.session_layer import validate_session
 
 
@@ -46,10 +45,8 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.include_router(users_router)
+app.include_router(profile_router)
 app.add_middleware(SessionMiddleware, secret_key=settings.SESSION_SECRET)
-
-BASE_DIR = Path(__file__).resolve().parent
-templates = Jinja2Templates(directory=str(Path(BASE_DIR, "templates")))
 
 OAUTH_STATE_PRIVATE_KEY = secrets.token_bytes(1024)
 

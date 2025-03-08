@@ -9,7 +9,7 @@
     <form action="/login/github" method="get"><input type="submit" value="Login with GitHub"/></form>
     <form action="/login/opencollective" method="get"><input type="submit" value="Login with OpenCollective"/></form>
 {% else %}
-    <p>Username: {{ user.username }}</p>
+    <p onclick="location.href='users/profile.html'">Username: {{ user.username }}</p>
     <p>Monthly Amount: ${{ "%.2f" % (user.month() / 100) }}</p>
     <p>{{ date }} Rank: {{ rank.month_rank }} of {{ rank.total }}</p>
     <p>Total Amount: ${{ "%.2f" % (user.total() / 100) }}</p>
