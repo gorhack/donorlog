@@ -40,7 +40,7 @@ application will do the following:
 
 ### Requirements:
 
-- Python 3.8+
+- Python 3.11+
 - direnv and update `secrets` file with updated OAuth client IDs and secrets
 - docker-compose for Postgres database
 - Register a new [GitHub OAuth application](https://github.com/settings/applications/new)
