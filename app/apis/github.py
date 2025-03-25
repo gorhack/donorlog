@@ -6,7 +6,7 @@ import httpx
 from fastapi import status
 
 from app.apis.oauth import OAuth, start_of_month
-from app.apis.users.users_schema import TotalAndMonthAmount
+from app.apis.users.users_schema import TotalAndMonthAmount, SponsorNode
 from app.core.config import settings
 
 
@@ -100,5 +100,57 @@ class GithubAPI(OAuth):
                     total=total,
                     last_checked=datetime.now(tz=timezone.utc)
                 )
+            else:
+                raise httpx.HTTPError(r.text)
+
+    @staticmethod
+    async def get_user_sponsorships_as_sponsor(access_token: str, cursor: str = "") -> list[SponsorNode]:
+        if not access_token:
+            return []
+        # rate limit, values of `first` must be within 1-100
+        # https://docs.github.com/en/graphql/overview/rate-limits-and-node-limits-for-the-graphql-api#node-limit
+        # only return the 100 most recent `sponsorAsSponsorship`s
+        # TODO: utilize the cursor to return more than 100 possible sponsorship user/organizations
+        # @formatter:off
+        query = (
+                """
+                query {
+                    user: viewer {""" +
+                        f'sponsorshipsAsSponsor(first: 100, activeOnly: false, after: "{cursor}") {{\n' +
+                            """totalCount
+                            edges {
+                                cursor
+                                node {
+                                    sponsorable {
+                                        ... on User {
+                                            login
+                                            url
+                                            avatarUrl
+                                        }
+                                        ... on Organization {
+                                            login
+                                            url
+                                            avatarUrl
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }""")
+        # @formatter:on
+        headers = {"Authorization": "bearer " + access_token}
+        sponsor_nodes: list[SponsorNode] = []
+        async with httpx.AsyncClient() as client:
+            r = await client.post(settings.GITHUB_GRAPHQL_API_URL, headers=headers, json={"query": query})
+            if r.status_code == status.HTTP_200_OK and not r.json().get("errors"):
+                nodes = r.json().get("data").get("user").get("sponsorshipsAsSponsor").get("edges")
+                for node in nodes:
+                    sponsor_nodes.append(SponsorNode(
+                        user=node.get("node").get("sponsorable").get("login"),
+                        url=node.get("node").get("sponsorable").get("url"),
+                        avatar_url=node.get("node").get("sponsorable").get("avatarUrl"),
+                    ))
+                return sponsor_nodes
             else:
                 raise httpx.HTTPError(r.text)
