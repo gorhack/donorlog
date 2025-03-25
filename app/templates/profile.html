@@ -6,5 +6,22 @@
 </head>
 <body>
 <p>Welcome {{username}}</p>
+<table>
+    <caption>{{ username }}'s Sponsorships</caption>
+    <thead>
+        <tr>
+            <th>Avatar</th>
+            <th>User/Organization</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for node in sponsored_nodes %}
+            <tr>
+                <td><img src="{{ node.avatar_url }}" alt="{{ node.user }}'s Avatar" width="25" height="25"></td>
+                <td><a href="{{ node.url }}" target="_blank">{{ node.user }}</a></td>
+            </tr>
+        {% endfor %}
+    </tbody>
+</table>
 </body>
 </html>

@@ -28,6 +28,11 @@ class GithubUser:
     github_auth_token: Optional[str]
     amount: TotalAndMonthAmount
 
+@dataclass
+class SponsorNode:
+    user: str
+    url: str
+    avatar_url: str
 
 @dataclass
 class OpencollectiveUser:
