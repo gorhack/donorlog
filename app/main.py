@@ -242,7 +242,7 @@ async def access_token_from_authorization_code_flow(
     (session_id, user_id) = (request.session.get("session_id"), request.session.get("user_id")) if validate_session(
         request) else (None, None)
     (oc_id, oc_username) = await OpenCollectiveAPI.get_id_and_username(access_token)
-    total_and_month = await OpenCollectiveAPI.get_user_sponsorship_amount(access_token)
+    total_and_month = await OpenCollectiveAPI.get_user_sponsorship_amount(oc_id)
     # add opencollective_id to database
     user = await UsersModel().insert_or_update_opencollective_user(
         opencollective_user=OpencollectiveUser(opencollective_id=oc_id, opencollective_username=oc_username,
