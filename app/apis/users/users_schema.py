@@ -33,6 +33,7 @@ class SponsorNode:
     user: str
     url: str
     avatar_url: str
+    total: int = 0
 
 @dataclass
 class OpencollectiveUser:
