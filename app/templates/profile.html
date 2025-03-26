@@ -12,6 +12,7 @@
         <tr>
             <th>Avatar</th>
             <th>User/Organization</th>
+            <th>Total Contributed</th>
         </tr>
     </thead>
     <tbody>
@@ -19,6 +20,7 @@
             <tr>
                 <td><img src="{{ node.avatar_url }}" alt="{{ node.user }}'s Avatar" width="25" height="25"></td>
                 <td><a href="{{ node.url }}" target="_blank">{{ node.user }}</a></td>
+                <td>${{ "%.2f" % (node.total / 100) }}</td>
             </tr>
         {% endfor %}
     </tbody>
