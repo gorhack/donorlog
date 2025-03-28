@@ -50,12 +50,14 @@ class OpenCollectiveAPI(OAuth):
             raise TypeError("access_token cannot be empty")
         # @formatter:off
         query = (
-            "query {"
-                "user: me {"
-                    "id\n"
-                    "username: slug"
-                "}"
-            "}"
+            """
+            query {
+                "user: me {
+                    id
+                    username: slug
+                }
+            }
+            """
         )
         # @formatter:on
         headers = {"authorization": "Bearer " + access_token}
@@ -76,18 +78,20 @@ class OpenCollectiveAPI(OAuth):
         # TODO: Currency differences
         # @formatter:off
         query = (
-            "query {"
-                f"individual(id: \"{user_id}\") {{"
-                    "stats {"
-                        f"month: totalAmountSpent(net: true, kind: CONTRIBUTION, dateFrom: \"{start_of_month()}\") {{"
-                            "valueInCents"
-                        "}"
-                        f"total: totalAmountSpent(net: true, kind: CONTRIBUTION) {{"
-                            "valueInCents"
-                        "}"
-                    "}"
-                "}"
-            "}"
+            f"""
+            query {{
+                individual(id: \"{user_id}\") {{
+                    stats {{
+                        month: totalAmountSpent(net: true, kind: CONTRIBUTION, dateFrom: \"{start_of_month()}\") {{
+                            valueInCents
+                        }}
+                        total: totalAmountSpent(net: true, kind: CONTRIBUTION) {{
+                            valueInCents
+                        }}
+                    }}
+                }}
+            }}
+            """
         )
         # @formatter:on
         headers = {"content-type": "application/json"}
