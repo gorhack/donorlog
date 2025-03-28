@@ -52,12 +52,14 @@ class GithubAPI(OAuth):
             raise TypeError("access_token cannot be empty")
         # @formatter:off
         query = (
-            "query {"
-                "user: viewer {"
-                    "id\n"
-                    "username: login"
-                "}"
-            "}"
+            """
+            query {
+                user: viewer {
+                    id
+                    username: login
+                }
+            }
+        """
         )
         # @formatter:on
         headers = {
@@ -81,12 +83,14 @@ class GithubAPI(OAuth):
             return None
         # @formatter:off
         query = (
-            "query {"
-                "user: viewer {"
-                    f"month: totalSponsorshipAmountAsSponsorInCents(since: \"{start_of_month()}\")\n"
-                    "total: totalSponsorshipAmountAsSponsorInCents(since: \"1970-01-01T00:00:00Z\")"
-                "}"
-            "}"
+            f"""
+            query {{
+                user: viewer {{
+                    month: totalSponsorshipAmountAsSponsorInCents(since: \"{start_of_month()}\")
+                    total: totalSponsorshipAmountAsSponsorInCents(since: \"1970-01-01T00:00:00Z\")
+                }}
+            }}
+            """
         )
         # @formatter:on
         headers = {"Authorization": "bearer " + access_token}
@@ -104,42 +108,40 @@ class GithubAPI(OAuth):
                 raise httpx.HTTPError(r.text)
 
     @staticmethod
-    async def get_user_sponsorships_as_sponsor(access_token: str, cursor: str = "") -> list[SponsorNode]:
-        if not access_token:
+    async def get_user_sponsorships_as_sponsor(credential: str, cursor: str = "") -> list[SponsorNode]:
+        if not credential:
             return []
         # rate limit, values of `first` must be within 1-100
         # https://docs.github.com/en/graphql/overview/rate-limits-and-node-limits-for-the-graphql-api#node-limit
         # only return the 100 most recent `sponsorAsSponsorship`s
         # TODO: utilize the cursor to return more than 100 possible sponsorship user/organizations
-        # @formatter:off
-        query = (
-                """
-                query {
-                    user: viewer {""" +
-                        f'sponsorshipsAsSponsor(first: 100, activeOnly: false, after: "{cursor}") {{\n' +
-                            """totalCount
-                            edges {
+        query = (f"""
+                query {{
+                    user: viewer {{
+                        sponsorshipsAsSponsor(first: 100, activeOnly: false, after: "{cursor}") {{
+                            totalCount
+                            edges {{
                                 cursor
-                                node {
-                                    sponsorable {
-                                        ... on User {
+                                node {{
+                                    sponsorable {{
+                                        ... on User {{
                                             login
                                             url
                                             avatarUrl
-                                        }
-                                        ... on Organization {
+                                        }}
+                                        ... on Organization {{
                                             login
                                             url
                                             avatarUrl
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }""")
-        # @formatter:on
-        headers = {"Authorization": "bearer " + access_token}
+                                        }}
+                                    }}
+                                }}
+                            }}
+                        }}
+                    }}
+                }}
+            """)
+        headers = {"Authorization": "bearer " + credential}
         sponsor_nodes: list[SponsorNode] = []
         async with httpx.AsyncClient() as client:
             r = await client.post(settings.GITHUB_GRAPHQL_API_URL, headers=headers, json={"query": query})
