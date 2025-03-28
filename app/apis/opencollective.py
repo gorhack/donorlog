@@ -6,7 +6,7 @@ import httpx
 from fastapi import status
 
 from app.apis.oauth import OAuth, start_of_month
-from app.apis.users.users_schema import TotalAndMonthAmount
+from app.apis.users.users_schema import TotalAndMonthAmount, SponsorNode
 from app.core.config import settings
 
 
@@ -101,5 +101,52 @@ class OpenCollectiveAPI(OAuth):
                     total=total,
                     last_checked=datetime.now(tz=timezone.utc)
                 )
+            else:
+                raise httpx.HTTPError(r.text)
+
+    @staticmethod
+    async def get_user_sponsorships_as_sponsor(credential: str, cursor: str = "0") -> list[SponsorNode]:
+        if not credential:
+            return []
+        # only return the 100 most backed accounts
+        # TODO: utilize offset to return more than 100 possible backed users/organizations
+        query = (
+            f"""
+            query {{
+                account(id: \"{credential}\") {{
+                    memberOf(role: BACKER, orderBy: {{field: TOTAL_CONTRIBUTED, direction: ASC}}, offset: {cursor}) {{
+                        totalCount
+                        nodes {{
+                            totalDonations {{
+                                valueInCents
+                            }}
+                            account {{
+                                slug
+                                imageUrl
+                            }}
+                        }}
+                    }}
+                }}
+            }}"""
+        )
+        headers = {"content-type": "application/json"}
+        slugs = set()
+        sponsor_nodes: list[SponsorNode] = []
+        async with httpx.AsyncClient() as client:
+            r = await client.post(settings.OPENCOLLECTIVE_GRAPHQL_API_URL, headers=headers, json={"query": query})
+            if r.status_code == status.HTTP_200_OK and not r.json().get("errors"):
+                nodes = r.json().get("data").get("account").get("memberOf").get("nodes")
+                for node in nodes:
+                    slug = node.get("account").get("slug")
+                    # OC returns duplicates if previously start/stopped current backing
+                    if slug not in slugs:
+                        slugs.add(slug)
+                        sponsor_nodes.append(SponsorNode(
+                            user=slug,
+                            url=f'https://opencollective.com/{node.get("account").get("slug")}',
+                            avatar_url=node.get("account").get("imageUrl"),
+                            total=node.get("totalDonations").get("valueInCents"),
+                        ))
+                return sponsor_nodes
             else:
                 raise httpx.HTTPError(r.text)

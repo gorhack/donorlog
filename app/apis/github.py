@@ -155,7 +155,8 @@ class GithubAPI(OAuth):
                 for node in sponsor_nodes:
                     individual_queries += f"{node.user}: totalSponsorshipAmountAsSponsorInCents(sponsorableLogins: \"{node.user}\")\n"
                 individual_queries += "}}"
-                r = await client.post(settings.GITHUB_GRAPHQL_API_URL, headers=headers, json={"query": individual_queries})
+                r = await client.post(settings.GITHUB_GRAPHQL_API_URL, headers=headers,
+                                      json={"query": individual_queries})
                 if r.status_code == status.HTTP_200_OK and not r.json().get("errors"):
                     for node in sponsor_nodes:
                         node.total = r.json().get("data").get("user").get(node.user)
