@@ -31,14 +31,14 @@ class TestUserProfile:
         assert re.search((
             "<img src=\"https://images.opencollective.com/homebrew/362ae9d/logo.png\" alt=\"user3's Avatar\" width=\"25\" height=\"25\".*"
             "<a href=\"https://opencollective.com/user3\" target=\"_blank\">user3</a>.*"
-            "<td>\$45.67</td>.*"
+            "<td>\\$45.67</td>.*"
             "<img src=\"https://avatars.githubusercontent.com/u/26825299\?v=4\" alt=\"user1's Avatar\" width=\"25\" height=\"25\".*"
             "<a href=\"https://github.com/user1\" target=\"_blank\">user1</a>.*"
-            "<td>\$12.34</td>.*"
+            "<td>\\$12.34</td>.*"
             "<img src=\"https://images.opencollective.com/core-js/92544a2/logo.png\" alt=\"user4's Avatar\" width=\"25\" height=\"25\".*"
             "<a href=\"https://opencollective.com/user4\" target=\"_blank\">user4</a>.*"
-            "<td>\$7.89</td>.*"
+            "<td>\\$7.89</td>.*"
             "<img src=\"https://avatars.githubusercontent.com/u/26825299\?v=4\" alt=\"user2's Avatar\" width=\"25\" height=\"25\">.*"
             "<a href=\"https://github.com/user2\" target=\"_blank\">user2</a>.*"
-            "<td>\$0.01</td>"
+            "<td>\\$0.01</td>"
         ), response.text, re.DOTALL)
