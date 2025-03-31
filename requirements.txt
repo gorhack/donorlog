@@ -18,7 +18,7 @@ python-multipart==0.0.20
 
 # for FastAPI types
 typing_extensions==4.12.2
-pydantic==2.10.6
+pydantic==2.11.1
 
 # postgres
 asyncpg==0.30.0
