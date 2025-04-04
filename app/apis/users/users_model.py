@@ -1,5 +1,6 @@
 from typing import Optional
 
+from asyncpg import UniqueViolationError
 from asyncpg.pool import Pool
 
 from app.apis.users.users_schema import User, OpencollectiveUser, GithubUser, TotalAndMonthAmount, RankedUsers, UserRank
@@ -260,3 +261,13 @@ class UsersModel:
                                                month_amount, total_amount)
             return UserRank(total_rank=result.get("total_rank"), month_rank=result.get("month_rank"),
                             total=result.get("total"))
+
+    @staticmethod
+    async def update_username(user_id: int, username: str):
+        async with database.pool.acquire() as connection:
+            try:
+                await connection.execute(
+                    "UPDATE users SET username = $1 WHERE user_id = $2;", username, user_id)
+            except UniqueViolationError:
+                return False
+            return True

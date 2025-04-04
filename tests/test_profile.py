@@ -1,6 +1,8 @@
 import re
 from unittest.mock import patch
 
+from fastapi import status
+
 from app.apis.github import GithubAPI
 from app.apis.opencollective import OpenCollectiveAPI
 from app.apis.users.users_schema import SponsorNode
@@ -11,7 +13,7 @@ from tests.test_main import async_client, async_client_with_logged_in_user, add_
 class TestUserProfile:
     async def test_not_logged_in(self, async_client):
         response = await async_client.get("/profile")
-        assert response.status_code == 401
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
     @patch.object(GithubAPI, "get_user_sponsorships_as_sponsor", return_value=[
         SponsorNode(user="user1", url="https://github.com/user1",
@@ -42,3 +44,20 @@ class TestUserProfile:
             "<a href=\"https://github.com/user2\" target=\"_blank\">user2</a>.*"
             "<td>\\$0.01</td>"
         ), response.text, re.DOTALL)
+
+    @patch.object(GithubAPI, "get_user_sponsorships_as_sponsor", return_value=[])
+    async def test_user_name_change_success(self, _, async_client_with_logged_in_user):
+        response = await async_client_with_logged_in_user.post("/profile", data={"username": "test_update"})
+        assert response.status_code == status.HTTP_303_SEE_OTHER
+        assert response.next_request.method == "GET"
+        response_redirect = await async_client_with_logged_in_user.get(response.next_request.url)
+        assert "Updated username from test_user_1 to test_update." in response_redirect.text
+
+    @patch.object(GithubAPI, "get_user_sponsorships_as_sponsor", return_value=[])
+    async def test_user_name_change_failure(self, _, async_client_with_logged_in_user):
+        await add_users_to_database([(test_user_1_opencollective, None)])
+        response = await async_client_with_logged_in_user.post("/profile", data={"username": "test_oc_user_1"})
+        assert response.status_code == status.HTTP_303_SEE_OTHER
+        assert response.next_request.method == "GET"
+        response_redirect = await async_client_with_logged_in_user.get(response.next_request.url)
+        assert "Unable to update username to test_oc_user_1. Choose another." in response_redirect.text
