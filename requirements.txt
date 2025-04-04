@@ -7,8 +7,7 @@ Jinja2==3.1.6
 
 # for testing
 pytest==8.3.5
-requests==2.32.3
-pytest-asyncio==0.25.3
+pytest-asyncio==0.26.0
 
 # for session
 itsdangerous==2.2.0
@@ -18,7 +17,7 @@ python-multipart==0.0.20
 
 # for FastAPI types
 typing_extensions==4.12.2
-pydantic==2.10.6
+pydantic==2.11.2
 
 # postgres
 asyncpg==0.30.0
