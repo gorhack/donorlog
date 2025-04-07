@@ -16,7 +16,7 @@ itsdangerous==2.2.0
 python-multipart==0.0.20
 
 # for FastAPI types
-typing_extensions==4.12.2
+typing_extensions==4.13.1
 pydantic==2.11.2
 
 # postgres
